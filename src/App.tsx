@@ -76,7 +76,7 @@ export default function App() {
       setToasts((prev) => [...prev.slice(-3), { id, title, elements: elementsData, kind, content }])
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id))
-      }, 4200)
+      }, 5300)
     },
     [],
   )

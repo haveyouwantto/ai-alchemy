@@ -20,7 +20,7 @@ function ToastItem({ toast }: { toast: ToastData }) {
 
   useEffect(() => {
     const t1 = setTimeout(() => setVisible(true), 30)
-    const t2 = setTimeout(() => setLeaving(true), 2600)
+    const t2 = setTimeout(() => setLeaving(true), 4700)
     return () => {
       clearTimeout(t1)
       clearTimeout(t2)
