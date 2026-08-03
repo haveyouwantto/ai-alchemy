@@ -180,19 +180,19 @@ export default function App() {
     [duplicateElement, pushToast],
   )
 
-  // ---- 清空桌面（仅清空实例，保留配方/图鉴/历史） ----
+  // ---- 清空桌面 ----
   const [confirmClear, setConfirmClear] = useState(false)
   const handleClearWorkspace = useCallback(() => {
     if (!confirmClear) {
       setConfirmClear(true)
       setTimeout(() => setConfirmClear(false), 2500)
-      pushToast('再次点击「清空」确认重置桌面（配方与图鉴保留）', undefined, 'info')
+      pushToast('再次点击「清空」确认重置桌面', undefined, 'info')
       return
     }
     setConfirmClear(false)
     resetWorkspace()
     setSelectedIndex(null)
-    pushToast('桌面已重置，配方/图鉴/历史保留', undefined, 'success')
+    pushToast('桌面已重置', undefined, 'success')
   }, [confirmClear, resetWorkspace, pushToast])
 
   // ---- 导入 / 导出 ----

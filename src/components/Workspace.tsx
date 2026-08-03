@@ -194,8 +194,11 @@ export function Workspace({
     [positions],
   )
 
+  // 拖拽过程中是否悬停过垃圾桶（松手时 event.over 可能已被清空，以此为准）
+  const trashActiveRef = useRef(false)
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over ? String(event.over.id) : null
+    trashActiveRef.current = overId === 'trash-can'
     setDragOverId(overId && overId.startsWith('drop-') ? overId : null)
   }, [])
 
@@ -225,6 +228,8 @@ export function Workspace({
       setDragOverId(null)
       activeKeyRef.current = null
       setIsDraggingAny(false)
+      const wasOverTrash = trashActiveRef.current
+      trashActiveRef.current = false
 
       const aIndex = elements.findIndex((el, i) => uidKey(el, i) === activeKey)
       if (aIndex < 0) {
@@ -232,8 +237,8 @@ export function Workspace({
         return
       }
 
-      // 拖入垃圾桶 → 删除实例
-      if (overRaw === 'trash-can') {
+      // 拖入垃圾桶 → 删除实例（优先使用拖拽过程中记录的目标）
+      if (wasOverTrash) {
         handleDeleteToTrash(activeKey)
         activeStartPos.current = null
         return
@@ -281,7 +286,7 @@ export function Workspace({
       }
       activeStartPos.current = null
     },
-    [elements, onCraft, onSelect],
+    [elements, onCraft, onSelect, handleDeleteToTrash],
   )
 
   const handleDragCancel = useCallback(() => {
