@@ -70,10 +70,16 @@ export default function App() {
 
   // ---- Toast ----
   const pushToast = useCallback(
-    (title: string, elementsData?: ToastData['elements'], kind: ToastData['kind'] = 'success', content?: string) => {
+    (
+      title: string,
+      elementsData?: ToastData['elements'],
+      kind: ToastData['kind'] = 'success',
+      content?: string,
+      hideObtainText?: boolean,
+    ) => {
       toastId.current += 1
       const id = toastId.current
-      setToasts((prev) => [...prev.slice(-3), { id, title, elements: elementsData, kind, content }])
+      setToasts((prev) => [...prev.slice(-3), { id, title, elements: elementsData, kind, content, hideObtainText }])
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id))
       }, 5300)
@@ -128,6 +134,7 @@ export default function App() {
             [{ name: el.name, svg: el.svg }],
             'success',
             el.description || '贤者尚未留下笔墨……',
+            true,
           )
         }
       }

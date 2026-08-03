@@ -7,6 +7,8 @@ export interface ToastData {
   kind?: 'success' | 'error' | 'info'
   /** 附加正文（如 AI 炼金术笔记，可多行） */
   content?: string
+  /** 隐藏「获得：××」文字行（仍保留图标飘落动画） */
+  hideObtainText?: boolean
 }
 
 interface ToastProps {
@@ -44,7 +46,7 @@ function ToastItem({ toast }: { toast: ToastData }) {
         <span className="text-2xl">{isSuccess ? '✨' : '⚠️'}</span>
         <div>
           <p className="font-bold text-amber-200">{toast.title}</p>
-          {toast.elements && toast.elements.length > 0 && (
+          {!toast.hideObtainText && toast.elements && toast.elements.length > 0 && (
             <p className="mt-0.5 text-sm text-purple-200">
               获得：
               <span className="font-semibold text-emerald-300">

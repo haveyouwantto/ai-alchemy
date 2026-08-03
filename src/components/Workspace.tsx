@@ -194,17 +194,23 @@ export function Workspace({
     [positions],
   )
 
-  // 拖拽过程中是否悬停过垃圾桶（松手时 event.over 可能已被清空，以此为准）
-  const trashActiveRef = useRef(false)
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over ? String(event.over.id) : null
-    trashActiveRef.current = overId === 'trash-can'
     setDragOverId(overId && overId.startsWith('drop-') ? overId : null)
   }, [])
 
   // ---- 垃圾桶（拖入即删实例） ----
   const { setNodeRef: setTrashRef, isOver: isOverTrash } = useDroppable({ id: 'trash-can' })
+  const trashRef = useRef<HTMLDivElement | null>(null)
   const [isDraggingAny, setIsDraggingAny] = useState(false)
+  /** 几何判定：拖拽中的卡片中心是否落入垃圾桶矩形内 */
+  const isPointerInsideTrash = useCallback((rect: { left: number; top: number; width: number; height: number }) => {
+    const trash = trashRef.current?.getBoundingClientRect()
+    if (!trash) return false
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    return cx >= trash.left && cx <= trash.right && cy >= trash.top && cy <= trash.bottom
+  }, [])
   const handleDeleteToTrash = useCallback(
     (activeKey: string) => {
       const aIndex = elements.findIndex((el, i) => uidKey(el, i) === activeKey)
@@ -228,8 +234,12 @@ export function Workspace({
       setDragOverId(null)
       activeKeyRef.current = null
       setIsDraggingAny(false)
-      const wasOverTrash = trashActiveRef.current
-      trashActiveRef.current = false
+      // 几何判定：活动卡片中心是否落在垃圾桶屏幕区域（绕开 droppable over 的不可靠性）
+      const activeRectMap = event.active.rect.current as { initial?: ClientRect; translated?: ClientRect }
+      const activeRect =
+        (activeRectMap.translated as { left: number; top: number; width: number; height: number } | undefined) ??
+        (activeRectMap.initial as { left: number; top: number; width: number; height: number } | undefined)
+      const droppedInTrash = activeRect ? isPointerInsideTrash(activeRect) : false
 
       const aIndex = elements.findIndex((el, i) => uidKey(el, i) === activeKey)
       if (aIndex < 0) {
@@ -237,8 +247,8 @@ export function Workspace({
         return
       }
 
-      // 拖入垃圾桶 → 删除实例（优先使用拖拽过程中记录的目标）
-      if (wasOverTrash) {
+      // 拖入垃圾桶 → 删除实例
+      if (droppedInTrash) {
         handleDeleteToTrash(activeKey)
         activeStartPos.current = null
         return
@@ -343,7 +353,10 @@ export function Workspace({
 
         {/* 垃圾桶：拖入即删除实例 */}
         <div
-          ref={setTrashRef}
+          ref={(node) => {
+            setTrashRef(node)
+            trashRef.current = node as HTMLDivElement | null
+          }}
           className={`absolute bottom-4 right-4 z-20 flex h-16 w-16 items-center justify-center rounded-2xl border-2 text-3xl transition-all duration-200 ${
             isOverTrash
               ? 'scale-110 border-red-400 bg-red-900/80 shadow-lg shadow-red-500/30'

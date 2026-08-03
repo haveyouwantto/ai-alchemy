@@ -17,7 +17,7 @@ import { parseToolArguments, streamChatCompletion } from '../aiClient'
 import { sanitizeSVG, uuid } from '../utils'
 
 /** AI 多轮工具调用的最大轮数 */
-const MAX_AI_ROUNDS = 6
+const MAX_AI_ROUNDS = 10
 
 /** 合成结果类型 */
 export type CraftOutcome =
@@ -501,104 +501,141 @@ export function useWorkspace() {
             break
           }
 
-          // ---- 执行本轮所有工具调用 ----
+          // ---- 执行本轮所有工具调用（严格校验：任一参数非法即回传 error 让 AI 重试，绝不写默认值） ----
+          let toolError: string | null = null
           for (const tc of toolCalls) {
+            if (toolError) break
             if (tc.function.name === 'create_category') {
               const args = parseToolArguments<CreateCategoryArgs>(tc.function.arguments)
               const draft = args?.category
-              if (draft?.name) {
-                // 类别 ID：优先用 AI 提供的（规范化），无效/空时基于名称生成
-                const catId =
-                  normalizeId(draft.id || '') ||
-                  normalizeId(draft.name) ||
-                  `category_${Date.now().toString(36)}`
-                // 避免与已有类别冲突
-                const exists =
-                  stateRef.current.categories.some((c) => c.id === catId) ||
-                  createdCategories.some((c) => c.id === catId)
-                if (!exists) {
-                  createdCategories.push({
-                    id: catId,
-                    name: draft.name.trim(),
-                    icon: sanitizeSVG(draft.icon || ''),
-                    description: draft.description?.trim() || '',
-                    createdAt: Date.now(),
-                  })
-                }
+              if (!draft || typeof draft !== 'object') {
+                toolError = 'create_category 缺少 category 参数'
+                break
+              }
+              const catId = normalizeId(draft.id)
+              const catName = draft.name?.trim()
+              const catIcon = draft.icon?.trim()
+              const catDesc = draft.description?.trim()
+              if (!catId) toolError = 'create_category 的 id 缺失或非法（需小写字母/数字/下划线）'
+              else if (!catName) toolError = 'create_category 的 name 缺失'
+              else if (!catIcon) toolError = 'create_category 的 icon 缺失'
+              else if (!catDesc) toolError = 'create_category 的 description 缺失'
+              else if (
+                stateRef.current.categories.some((c) => c.id === catId) ||
+                createdCategories.some((c) => c.id === catId)
+              ) {
+                toolError = `create_category 的 id「${catId}」已存在，请换一个`
+              } else {
+                createdCategories.push({
+                  id: catId,
+                  name: catName,
+                  icon: sanitizeSVG(catIcon),
+                  description: catDesc,
+                  createdAt: Date.now(),
+                })
               }
               messages.push({
                 role: 'tool',
                 tool_call_id: tc.id,
-                content: JSON.stringify({ ok: true, created_categories: createdCategories.map((c) => c.id) }),
+                content: toolError
+                  ? JSON.stringify({ error: toolError })
+                  : JSON.stringify({ ok: true, created_categories: createdCategories.map((c) => c.id) }),
               })
             } else if (tc.function.name === 'craft_elements') {
               const args = parseToolArguments<CraftElementsArgs>(tc.function.arguments)
+              const drafts = args?.new_elements
+              if (!Array.isArray(drafts) || drafts.length === 0) {
+                toolError = 'craft_elements 的 new_elements 缺失或为空'
+                messages.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  content: JSON.stringify({ error: toolError }),
+                })
+                break
+              }
               const createdResults: Array<{ name: string; id: string }> = []
 
-              for (const draft of args?.new_elements ?? []) {
+              for (let i = 0; i < drafts.length; i++) {
+                if (toolError) break
+                const draft = drafts[i]
                 const name = draft.name?.trim()
-                if (!name) continue
-
-                // 元素 ID：AI 提供或按名称规范化
-                let elementId = normalizeId(draft.id || name)
-
-                // 前端兜底：若已解锁库中存在同名/同ID元素，直接复用模板（含原始SVG），不创建新元素
-                const existingByName = stateRef.current.unlockedElements.find((e) => e.name === name)
-                const existingById = stateRef.current.unlockedElements.find((e) => e.id === elementId)
+                const elementId = normalizeId(draft.id)
+                const desc = draft.description?.trim()
+                const svgRaw = draft.svg_content?.trim()
+                const catRaw = draft.category_id?.trim()
+                // 前端兜底：若已解锁库中存在同名/同ID元素，直接复用模板（合法路径，不算参数错误）
+                const existingByName = name ? stateRef.current.unlockedElements.find((e) => e.name === name) : undefined
+                const existingById = elementId ? stateRef.current.unlockedElements.find((e) => e.id === elementId) : undefined
                 const existing = existingByName ?? existingById
                 if (existing) {
                   newElementRefs.set(existing.id, existing.id)
-                  newElementIdByName.set(name, existing.id)
+                  if (name) newElementIdByName.set(name, existing.id)
                   newElementIdByName.set(existing.name, existing.id)
                   createdResults.push({ name: existing.name, id: existing.id })
                   continue
                 }
-
-                // 元素重名处理：与现有元素或本轮已创建元素同名时追加“(异界)”后缀
-                const nameTaken =
-                  stateRef.current.elements.some((e) => e.name === name) ||
-                  newElements.some((e) => e.name === name)
-                const finalName = nameTaken ? `${name}(异界)` : name
-                if (
-                  stateRef.current.unlockedElements.some((e) => e.id === elementId) ||
-                  newElements.some((e) => e.id === elementId)
-                ) {
-                  elementId = `${elementId}_${newElements.length + createdCategories.length + 1}`
+                if (!name) toolError = `new_elements[${i}] 的 name 缺失`
+                else if (!elementId) toolError = `new_elements[${i}]（${name}）的 id 缺失或非法（需小写字母/数字/下划线）`
+                else if (!desc) toolError = `new_elements[${i}]（${name}）的 description 缺失`
+                else if (!svgRaw) toolError = `new_elements[${i}]（${name}）的 svg_content 缺失`
+                else if (!catRaw) toolError = `new_elements[${i}]（${name}）的 category_id 缺失，必须引用已有类别或先调用 create_category`
+                else {
+                  const categoryId = normalizeId(catRaw)
+                  const categoryValid =
+                    stateRef.current.categories.some((c) => c.id === categoryId) ||
+                    createdCategories.some((c) => c.id === categoryId)
+                  if (!categoryValid) {
+                    toolError = `new_elements[${i}]（${name}）的 category_id「${categoryId}」不存在，请改用已有类别或先调用 create_category`
+                  } else {
+                    // 元素重名处理：与现有元素或本轮已创建元素同名时追加“(异界)”后缀
+                    const nameTaken =
+                      stateRef.current.elements.some((e) => e.name === name) ||
+                      newElements.some((e) => e.name === name)
+                    const finalName = nameTaken ? `${name}(异界)` : name
+                    let finalId = elementId
+                    if (
+                      stateRef.current.unlockedElements.some((e) => e.id === finalId) ||
+                      newElements.some((e) => e.id === finalId)
+                    ) {
+                      finalId = `${finalId}_${newElements.length + createdCategories.length + 1}`
+                    }
+                    newElements.push({
+                      id: finalId,
+                      name: finalName,
+                      description: desc,
+                      categoryId,
+                      svg: sanitizeSVG(svgRaw),
+                      createdAt: Date.now(),
+                      useCount: 0,
+                      isForeign: nameTaken,
+                    })
+                    if (!newElementRefs.has(finalId)) newElementRefs.set(finalId, finalId)
+                    newElementIdByName.set(name, finalId)
+                    newElementIdByName.set(finalName, finalId)
+                    createdResults.push({ name: finalName, id: finalId })
+                  }
                 }
-                // 类别 ID：AI 提供（若是本轮新建则直接归入），否则默认天地万象
-                let categoryId = draft.category_id ? normalizeId(draft.category_id) : DEFAULT_CATEGORY_ID
-                const categoryValid =
-                  stateRef.current.categories.some((c) => c.id === categoryId) ||
-                  createdCategories.some((c) => c.id === categoryId)
-                if (!categoryValid) {
-                  categoryId = DEFAULT_CATEGORY_ID
-                }
-
-                newElements.push({
-                  id: elementId,
-                  name: finalName,
-                  description: draft.description?.trim() || '',
-                  categoryId,
-                  svg: sanitizeSVG(draft.svg_content || ''),
-                  createdAt: Date.now(),
-                  useCount: 0,
-                  isForeign: nameTaken,
-                })
-                if (!newElementRefs.has(elementId)) newElementRefs.set(elementId, elementId)
-                newElementIdByName.set(name, elementId)
-                newElementIdByName.set(finalName, elementId)
-                createdResults.push({ name: finalName, id: elementId })
               }
-
-              // 将工具执行结果（新元素 ID）回传给模型
               messages.push({
                 role: 'tool',
                 tool_call_id: tc.id,
-                content: JSON.stringify({ created: createdResults }),
+                content: toolError
+                  ? JSON.stringify({ error: toolError })
+                  : JSON.stringify({ created: createdResults }),
               })
             } else if (tc.function.name === 'craft_recipe') {
               const args = parseToolArguments<CraftRecipeArgs>(tc.function.arguments)
-              recipeOutputIds = args?.output_element_ids ?? []
+              const ids = args?.output_element_ids
+              if (!Array.isArray(ids) || ids.length === 0 || ids.length > 3) {
+                toolError = 'craft_recipe 的 output_element_ids 必须为 1~3 个元素ID'
+                messages.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  content: JSON.stringify({ error: toolError }),
+                })
+                break
+              }
+              recipeOutputIds = ids
               messages.push({
                 role: 'tool',
                 tool_call_id: tc.id,
@@ -609,6 +646,8 @@ export function useWorkspace() {
 
           // 已收集到配方输出 → 提前结束
           if (recipeOutputIds.length > 0) break
+          // 本轮参数出错 → 继续循环，让 AI 根据错误修正重试
+          if (toolError) continue
         }
 
         // ---- 解析输出 ID：可能引用元素 ID、元素名 ----
