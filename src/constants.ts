@@ -1,0 +1,114 @@
+import type { Element, ElementCategory, Recipe } from './types'
+import defaultWorkspace from './data/defaultWorkspace.json'
+
+/** 初始基础元素列表（完全数据驱动，从 defaultWorkspace.json 加载） */
+export const INITIAL_ELEMENTS: Element[] = defaultWorkspace.elements as Element[]
+
+/** 初始元素类别 */
+export const INITIAL_CATEGORIES: ElementCategory[] = defaultWorkspace.categories as ElementCategory[]
+
+/** 默认类别 ID：天地万象 */
+export const DEFAULT_CATEGORY_ID = 'cosmos'
+
+/** 初始工作区：仅基础元素 + 天地万象类别，配方书为空 */
+export const INITIAL_WORKSPACE: { elements: Element[]; recipes: Recipe[]; categories: ElementCategory[] } = {
+  elements: defaultWorkspace.elements as Element[],
+  recipes: [],
+  categories: defaultWorkspace.categories as ElementCategory[],
+}
+
+/** LLM 系统提示词模板（固定前缀 + 动态注入） */
+export const SYSTEM_PROMPT_TEMPLATE = `你是一个炼金术合成规则生成器。当前世界拥有以下元素：[元素列表]（每条含 ID、类别与描述，可帮助你理解每个元素的本质），元素类别：[类别列表]。玩家正尝试合成 [元素A] 和 [元素B]。
+请根据化学、物理或神话隐喻，生成合成产物。
+规则：
+1. 尽量只生成 1 个产物，最多不超过 2 个。只有存在多个同样经典、确切的隐喻时，才生成第 2 个。绝不生成 3 个。
+2. 优先选择直觉上最自然、最直接的产物。避免生成过于高级或偏僻的产物（如魔法物质、宇宙物质等），除非隐喻极其直接且无可替代。
+3. 如果产物是元素列表中已有的元素，必须直接引用其现有 ID，并沿用其原 SVG 图标，绝不重复创建。绝对不要为同一个元素编写第二份不同的 SVG。
+4. 如果产物是全新的，请调用 craft_elements 创建它：
+   - id 必须用英语书写：只能包含小写字母 a-z、数字 0-9 和下划线，单词间用下划线连接。严禁使用中文拼音或非英文字符作为 id
+   - name 使用对应的中文名称，不要用英文
+   - 为它写一段简短的 description（一两句即可）
+   - 元素应归属到合适的「大类」：当产物属于一个全新的、能容纳多个相近元素的宏大主题时，调用 create_category 创建这个大类别；已有合适的大类别时则直接复用归入。不要为单个元素创建过小或过于独特的类别，仅当产物与现有类别都毫不相干时，才为它建立新的大类别
+   - 设计一个极简、抽象、美观的 SVG（画布 100x100，纯矢量）
+5. 必须调用 craft_recipe 绑定本次的输入和输出。
+注意：不要生成与输入元素完全相同的产物，不要生成过于复杂或不合理的 SVG。`
+
+/** Function Calling 工具 Schema */
+export const FUNCTIONS = [
+  {
+    type: 'function',
+    function: {
+      name: 'craft_elements',
+      description: '创建本次合成中出现的新元素',
+      parameters: {
+        type: 'object',
+        properties: {
+          new_elements: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: '必须用英语书写：小写字母 a-z、数字 0-9、下划线，单词间用下划线连接；禁止中文拼音或非英文字符' },
+                name: { type: 'string', description: '对应的中文名称' },
+                description: { type: 'string', description: '元素文字描述（中文）' },
+                svg_content: { type: 'string' },
+                category_id: { type: 'string', description: '所属的大类别ID；若该产物属于全新的大主题，请先调用 create_category 创建类别再引用' },
+              },
+              required: ['id', 'name', 'description', 'svg_content'],
+            },
+          },
+        },
+        required: ['new_elements'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'craft_recipe',
+      description: '记录本次双输入合成产生的输出结果ID',
+      parameters: {
+        type: 'object',
+        properties: {
+          output_element_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+            maxItems: 3,
+            description: '必须是已有元素ID或刚通过craft_elements创建的元素ID',
+          },
+        },
+        required: ['output_element_ids'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_category',
+      description: '创建新的元素大类别（用于容纳多个主题相近的元素；仅当合成产物属于全新的宏大主题时才调用）',
+      parameters: {
+        type: 'object',
+        properties: {
+          category: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: '必须用英语书写：小写字母 a-z、数字 0-9、下划线，单词间用下划线连接；禁止中文拼音或非英文字符' },
+              name: { type: 'string', description: '对应的中文名称' },
+              icon: { type: 'string', description: '100x100 纯矢量 SVG' },
+              description: { type: 'string', description: '类别描述（中文）' },
+            },
+            required: ['id', 'name', 'icon', 'description'],
+          },
+        },
+        required: ['category'],
+      },
+    },
+  },
+] as const
+
+/** 工作区随机摆放的边界（百分比） */
+export const SPAWN_BOUNDS = { min: 10, max: 70 }
+
+/** 合成动画时长（毫秒） */
+export const CRAFT_ANIMATION_MS = 600

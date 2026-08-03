@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  background: #12081f;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.dnd-card {
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+/* SVG 渲染容器：防止外部尺寸被拉伸 */
+.svg-shell svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 自定义滚动条 */
+.alchemy-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.alchemy-scroll::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.4);
+  border-radius: 3px;
+}
+.alchemy-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 拖拽过程中的目标高亮 */
+.drag-over-active {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.9), 0 8px 30px rgba(251, 191, 36, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  z-index: 30;
+}
