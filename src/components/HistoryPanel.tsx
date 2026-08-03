@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CraftHistoryEntry } from '../types'
+import type { CraftHistoryEntry, Element, Recipe } from '../types'
 import { sanitizeSVG } from '../utils'
 
 interface HistoryPanelProps {
   history: CraftHistoryEntry[]
+  /** 配方表：用于按 recipeId 解析输入/输出元素 */
+  recipes: Recipe[]
+  /** 元素库（图鉴）：用于渲染元素名称/SVG */
+  elements: Element[]
   open: boolean
   onClose: () => void
   onClear: () => void
@@ -42,7 +46,7 @@ function formatDate(ts: number): string {
 /** 每页显示的记录条数 */
 const PAGE_SIZE = 20
 
-export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelProps) {
+export function HistoryPanel({ history, recipes, elements, open, onClose, onClear }: HistoryPanelProps) {
   const [confirmClear, setConfirmClear] = useState(false)
   const [page, setPage] = useState(0)
 
@@ -63,6 +67,19 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
     }
     return Array.from(map.entries())
   }, [history])
+
+  // id → 元素 查找（从图鉴库解析，历史仅存 recipeId，遵循范式）
+  const elementById = useMemo(() => {
+    const map = new Map<string, Element>()
+    for (const e of elements) map.set(e.id, e)
+    return map
+  }, [elements])
+
+  const recipeById = useMemo(() => {
+    const map = new Map<string, Recipe>()
+    for (const r of recipes) map.set(r.id, r)
+    return map
+  }, [recipes])
 
   // 分页：扁平化后按 PAGE_SIZE 切页，再按日期重组（简单可靠）
   const totalCount = groups.reduce((n, [, entries]) => n + entries.length, 0)
@@ -94,6 +111,15 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
     }
     setConfirmClear(false)
     onClear()
+  }
+
+  /** 由历史条目解析配方详情（输入/输出元素与名称） */
+  const resolveHistory = (h: CraftHistoryEntry) => {
+    const recipe = recipeById.get(h.recipeId)
+    const elA = recipe ? elementById.get(recipe.inputA) : undefined
+    const elB = recipe ? elementById.get(recipe.inputB) : undefined
+    const outs = recipe ? recipe.outputs.map((oid) => elementById.get(oid)).filter((e): e is Element => !!e) : []
+    return { recipe, elA, elB, outs }
   }
 
   return (
@@ -145,45 +171,53 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
                   </div>
                   {/* 条目列表 */}
                   <div className="flex flex-col gap-2">
-                    {entries.map((h) => (
-                      <div
-                        key={h.id}
-                        className="rounded-lg border border-amber-800/30 bg-[#fdf6e3] px-3 py-2 shadow-sm transition-colors hover:border-amber-600"
-                      >
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-mono text-[10px] text-amber-600">{formatTime(h.timestamp)}</span>
-                          <span
-                            className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                              h.source === 'ai'
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-amber-200 text-amber-900'
-                            }`}
-                          >
-                            {h.source === 'ai' ? 'AI 炼成' : '配方'}{' '}
-                            {h.newCount ? `(+${h.newCount}新)` : ''}
-                          </span>
-                        </div>
-                        {/* 公式：A + B = 输出 */}
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span className="flex items-center gap-1">
-                            <HistoryIcon svg={h.inputA.svg} size={24} />
-                            <span className="text-xs font-semibold text-amber-950">{h.inputA.name}</span>
-                          </span>
-                          <span className="text-xs font-bold text-amber-700">+</span>
-                          <span className="flex items-center gap-1">
-                            <HistoryIcon svg={h.inputB.svg} size={24} />
-                            <span className="text-xs font-semibold text-amber-950">{h.inputB.name}</span>
-                          </span>
-                          <span className="text-xs font-bold text-amber-700">=</span>
-                          {h.outputs.map((o) => (
-                            <span key={`${h.id}-${o.id}-${Math.random()}`} className="flex items-center gap-1">
-                              <HistoryIcon svg={o.svg} size={24} />
-                              <span className="text-xs font-bold text-emerald-800">{o.name}</span>
+                    {entries.map((h) => {
+                      const { recipe, elA, elB, outs } = resolveHistory(h)
+                      return (
+                        <div
+                          key={h.id}
+                          className="rounded-lg border border-amber-800/30 bg-[#fdf6e3] px-3 py-2 shadow-sm transition-colors hover:border-amber-600"
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-[10px] text-amber-600">{formatTime(h.timestamp)}</span>
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                                h.source === 'ai'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-amber-200 text-amber-900'
+                              }`}
+                            >
+                              {h.source === 'ai' ? 'AI 炼成' : '配方'}{' '}
+                              {h.newCount ? `(+${h.newCount}新)` : ''}
                             </span>
-                          ))}
+                          </div>
+                          {!recipe ? (
+                            <div className="mt-1 text-xs text-amber-700">
+                              配方已不存在（id={h.recipeId}）
+                            </div>
+                          ) : (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="flex items-center gap-1">
+                                <HistoryIcon svg={elA?.svg ?? ''} size={24} />
+                                <span className="text-xs font-semibold text-amber-950">{elA?.name ?? '?'}</span>
+                              </span>
+                              <span className="text-xs font-bold text-amber-700">+</span>
+                              <span className="flex items-center gap-1">
+                                <HistoryIcon svg={elB?.svg ?? ''} size={24} />
+                                <span className="text-xs font-semibold text-amber-950">{elB?.name ?? '?'}</span>
+                              </span>
+                              <span className="text-xs font-bold text-amber-700">=</span>
+                              {outs.map((o) => (
+                                <span key={`${h.id}-${o.id}`} className="flex items-center gap-1">
+                                  <HistoryIcon svg={o.svg} size={24} />
+                                  <span className="text-xs font-bold text-emerald-800">{o.name}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))}

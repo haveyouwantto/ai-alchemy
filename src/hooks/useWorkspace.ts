@@ -103,12 +103,7 @@ function loadStoredWorkspace(): StoredWorkspace {
           craftHistory: Array.isArray(parsed.craftHistory)
             ? parsed.craftHistory.filter(
                 (h) =>
-                  h &&
-                  typeof h.id === 'string' &&
-                  typeof h.timestamp === 'number' &&
-                  h.inputA &&
-                  h.inputB &&
-                  Array.isArray(h.outputs),
+                  h && typeof h.id === 'string' && typeof h.timestamp === 'number' && typeof h.recipeId === 'string',
               )
             : [],
         }
@@ -353,11 +348,9 @@ export function useWorkspace() {
       if (added.length > 0) {
         setElements((prev) => [...prev, ...added])
       }
-      // 记录合成历史（每次触发记一条）
+      // 记录合成历史（范式：仅引用配方 ID）
       addCraftHistoryEntry({
-        inputA: { id: inputA.id, name: inputA.name, svg: inputA.svg },
-        inputB: { id: inputB.id, name: inputB.name, svg: inputB.svg },
-        outputs: outputs.map((o) => ({ id: o.id, name: o.name, svg: o.svg })),
+        recipeId: recipe.id,
         source: 'local',
       })
       return { type: 'local', added, known }
@@ -731,12 +724,10 @@ export function useWorkspace() {
         const added = producedInstances.map((e) => ({ ...e }))
         const known: string[] = []
 
-        // 记录合成历史（每次触发记一条，附炼金术笔记）
+        // 记录合成历史（范式：仅引用配方 ID，附炼金术笔记）
         const finalNote = craftNote.trim()
         addCraftHistoryEntry({
-          inputA: { id: inputA.id, name: inputA.name, svg: inputA.svg },
-          inputB: { id: inputB.id, name: inputB.name, svg: inputB.svg },
-          outputs: producedInstances.map((e) => ({ id: e.id, name: e.name, svg: e.svg })),
+          recipeId: newRecipe.id,
           source: 'ai',
           newCount: newElements.length,
           note: finalNote || undefined,
@@ -920,41 +911,41 @@ export function useWorkspace() {
           )
           .map((r) => ({ id: r.id, inputA: r.inputA, inputB: r.inputB, outputs: r.outputs.slice(0, 3) }))
 
-        // 导入合成历史（仅保留合法条目，无数量限制）
+        // 导入合成历史（范式：仅 recipeId 引用配方）
+        // - 新格式：h.recipeId 直接用
+        // - 旧格式：h.inputA/h.inputB 快照 → 按无序输入对匹配导入配方；匹配不到则丢弃
+        type RawHistory = Partial<CraftHistoryEntry> & {
+          inputA?: { id?: string; name?: string; svg?: string }
+          inputB?: { id?: string; name?: string; svg?: string }
+        }
         const importedHistory: CraftHistoryEntry[] = Array.isArray(data.craftHistory)
-          ? data.craftHistory
-              .filter(
-                (h) =>
-                  h &&
-                  typeof h.id === 'string' &&
-                  typeof h.timestamp === 'number' &&
-                  h.inputA &&
-                  typeof h.inputA.name === 'string' &&
-                  h.inputB &&
-                  typeof h.inputB.name === 'string' &&
-                  Array.isArray(h.outputs),
-              )
-              .map((h) => ({
-                id: h.id,
-                timestamp: h.timestamp,
-                inputA: {
-                  id: h.inputA.id ?? '',
-                  name: h.inputA.name,
-                  svg: typeof h.inputA.svg === 'string' ? h.inputA.svg : '',
-                },
-                inputB: {
-                  id: h.inputB.id ?? '',
-                  name: h.inputB.name,
-                  svg: typeof h.inputB.svg === 'string' ? h.inputB.svg : '',
-                },
-                outputs: h.outputs
-                  .filter(
-                    (o) => o && typeof o.name === 'string' && (typeof o.id === 'string' || typeof o.id === 'undefined'),
-                  )
-                  .map((o) => ({ id: o.id ?? '', name: o.name, svg: typeof o.svg === 'string' ? o.svg : '' })),
-                source: (h.source === 'ai' ? 'ai' : 'local') as 'local' | 'ai',
-                newCount: h.newCount,
-              }))
+          ? (data.craftHistory as RawHistory[])
+              .filter((h) => {
+                if (!h || typeof h.id !== 'string' || typeof h.timestamp !== 'number') return false
+                if (typeof h.recipeId === 'string') return true
+                return typeof h.inputA?.id === 'string' && typeof h.inputB?.id === 'string'
+              })
+              .map((h) => {
+                let recipeId = typeof h.recipeId === 'string' ? h.recipeId : ''
+                if (!recipeId) {
+                  const a = h.inputA?.id ?? ''
+                  const b = h.inputB?.id ?? ''
+                  recipeId =
+                    importedRecipes.find(
+                      (r) => (r.inputA === a && r.inputB === b) || (r.inputA === b && r.inputB === a),
+                    )?.id ?? ''
+                }
+                if (!recipeId) return null
+                return {
+                  id: h.id,
+                  timestamp: h.timestamp,
+                  recipeId,
+                  source: (h.source === 'ai' ? 'ai' : 'local') as 'local' | 'ai',
+                  ...(typeof h.newCount === 'number' ? { newCount: h.newCount } : {}),
+                  ...(typeof h.note === 'string' ? { note: h.note } : {}),
+                } as CraftHistoryEntry
+              })
+              .filter((h): h is CraftHistoryEntry => !!h)
           : []
 
         setElements(importedElements)

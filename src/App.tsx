@@ -386,6 +386,8 @@ export default function App() {
       />
       <HistoryPanel
         history={craftHistory}
+        recipes={recipes}
+        elements={unlockedElements}
         open={showHistory}
         onClose={() => setShowHistory(false)}
         onClear={() => {
