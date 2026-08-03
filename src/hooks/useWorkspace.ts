@@ -19,9 +19,6 @@ import { sanitizeSVG, uuid } from '../utils'
 /** AI 多轮工具调用的最大轮数 */
 const MAX_AI_ROUNDS = 6
 
-/** 合成历史保留的最大条数（最近 50 条） */
-const MAX_HISTORY_LIMIT = 50
-
 /** 合成结果类型 */
 export type CraftOutcome =
   | { type: 'local'; added: Element[]; known: string[] }
@@ -92,19 +89,17 @@ function loadStoredWorkspace(): StoredWorkspace {
           recipes: parsed.recipes,
           categories,
           unlockedElements,
-          // 历史记录：仅保留合法条目，截断到最近 50 条
+          // 历史记录：仅保留合法条目（无数量限制，配合前端分页展示）
           craftHistory: Array.isArray(parsed.craftHistory)
-            ? parsed.craftHistory
-                .filter(
-                  (h) =>
-                    h &&
-                    typeof h.id === 'string' &&
-                    typeof h.timestamp === 'number' &&
-                    h.inputA &&
-                    h.inputB &&
-                    Array.isArray(h.outputs),
-                )
-                .slice(-MAX_HISTORY_LIMIT)
+            ? parsed.craftHistory.filter(
+                (h) =>
+                  h &&
+                  typeof h.id === 'string' &&
+                  typeof h.timestamp === 'number' &&
+                  h.inputA &&
+                  h.inputB &&
+                  Array.isArray(h.outputs),
+              )
             : [],
         }
       }
@@ -274,7 +269,7 @@ export function useWorkspace() {
     setCraftHistory([])
   }, [])
 
-  /** 向合成历史追加一条记录（自动截断到最近 MAX_HISTORY_LIMIT 条） */
+  /** 向合成历史追加一条记录（无数量上限，前端分页展示） */
   const addCraftHistoryEntry = useCallback(
     (entry: Omit<CraftHistoryEntry, 'id' | 'timestamp'>) => {
       setCraftHistory((prev) => {
@@ -283,7 +278,7 @@ export function useWorkspace() {
           timestamp: Date.now(),
           ...entry,
         }
-        return [...prev, next].slice(-MAX_HISTORY_LIMIT)
+        return [...prev, next]
       })
     },
     [],
@@ -803,7 +798,7 @@ export function useWorkspace() {
           )
           .map((r) => ({ id: r.id, inputA: r.inputA, inputB: r.inputB, outputs: r.outputs.slice(0, 3) }))
 
-        // 导入合成历史（仅保留合法条目，截断到最近 50 条）
+        // 导入合成历史（仅保留合法条目，无数量限制）
         const importedHistory: CraftHistoryEntry[] = Array.isArray(data.craftHistory)
           ? data.craftHistory
               .filter(
@@ -838,7 +833,6 @@ export function useWorkspace() {
                 source: (h.source === 'ai' ? 'ai' : 'local') as 'local' | 'ai',
                 newCount: h.newCount,
               }))
-              .slice(-MAX_HISTORY_LIMIT)
           : []
 
         setElements(importedElements)

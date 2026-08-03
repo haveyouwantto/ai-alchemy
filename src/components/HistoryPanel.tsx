@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CraftHistoryEntry } from '../types'
 import { sanitizeSVG } from '../utils'
 
@@ -39,8 +39,17 @@ function formatDate(ts: number): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 
+/** 每页显示的记录条数 */
+const PAGE_SIZE = 20
+
 export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelProps) {
   const [confirmClear, setConfirmClear] = useState(false)
+  const [page, setPage] = useState(0)
+
+  // 打开时回到第一页
+  useEffect(() => {
+    if (open) setPage(0)
+  }, [open])
 
   // 按日期分组（时间倒序：最近的在前）
   const groups = useMemo(() => {
@@ -54,6 +63,38 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
     }
     return Array.from(map.entries())
   }, [history])
+
+  // 分页：按记录条数切页（每页可跨多个日期分组）
+  const totalCount = groups.reduce((n, [, entries]) => n + entries.length, 0)
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+
+  const visibleGroups = useMemo(() => {
+    const result: Array<[string, CraftHistoryEntry[]]> = []
+    let count = 0
+    let collecting = false
+    for (const [date, entries] of groups) {
+      if (!collecting) {
+        // 定位到本页起始位置
+        if (count + entries.length > safePage * PAGE_SIZE) {
+          collecting = true
+          const skip = safePage * PAGE_SIZE - count
+          const slice = entries.slice(skip)
+          result.push([date, slice])
+          count += slice.length
+        } else {
+          count += entries.length
+        }
+      } else {
+        const remaining = (safePage + 1) * PAGE_SIZE - count
+        if (remaining <= 0) break
+        const slice = entries.slice(0, remaining)
+        result.push([date, slice])
+        count += slice.length
+      }
+    }
+    return result
+  }, [groups, safePage])
 
   if (!open) return null
 
@@ -73,7 +114,7 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
       <div className="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-amber-700/40 bg-[#8b5a2b] shadow-2xl">
         {/* 页眉 */}
         <div className="flex items-center justify-between border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
-          <h2 className="font-serif text-xl font-bold tracking-widest">📜 炼金记录 · 最近 {history.length} 次</h2>
+          <h2 className="font-serif text-xl font-bold tracking-widest">📜 炼金记录 · 共 {history.length} 条</h2>
           <div className="flex items-center gap-2">
             {history.length > 0 && (
               <button
@@ -108,7 +149,7 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              {groups.map(([date, entries]) => (
+              {visibleGroups.map(([date, entries]) => (
                 <div key={date}>
                   {/* 日期分隔 */}
                   <div className="sticky top-0 z-10 mb-2 rounded-lg bg-[#7a4a20]/95 px-3 py-1 text-xs font-bold uppercase tracking-wider text-amber-100 shadow">
@@ -161,6 +202,37 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
             </div>
           )}
         </div>
+
+        {/* 底部翻页 */}
+        {history.length > 0 && (
+          <div className="flex items-center justify-between border-t border-amber-900/30 bg-[#7a4a20]/95 px-4 py-2 text-amber-100">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage <= 0}
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                safePage <= 0
+                  ? 'cursor-not-allowed opacity-40'
+                  : 'bg-amber-900/50 hover:bg-amber-900/80'
+              }`}
+            >
+              ‹ 上一页
+            </button>
+            <span className="text-xs font-semibold">
+              第 {safePage + 1} / {totalPages} 页
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                safePage >= totalPages - 1
+                  ? 'cursor-not-allowed opacity-40'
+                  : 'bg-amber-900/50 hover:bg-amber-900/80'
+              }`}
+            >
+              下一页 ›
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
