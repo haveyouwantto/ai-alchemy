@@ -43,11 +43,6 @@ const LEGACY_CATEGORY_ID_MAP: Record<string, string> = {
   tian_di_wan_xiang: 'cosmos',
 }
 
-/** 旧元素 ID → 新元素 ID 迁移映射（如 wind → air） */
-const LEGACY_ELEMENT_ID_MAP: Record<string, string> = {
-  wind: 'air',
-}
-
 interface StoredWorkspace {
   elements: Element[]
   recipes: Recipe[]
@@ -71,15 +66,13 @@ function loadStoredWorkspace(): StoredWorkspace {
         craftHistory?: CraftHistoryEntry[]
       }
       if (Array.isArray(parsed.elements) && Array.isArray(parsed.recipes)) {
-        // 迁移类别 ID 与旧元素 ID（wind → air）
+        // 仅迁移类别 ID（元素 ID 不迁移：wind 等 ID 让 AI 自由创建「风」）
         const migId = (id: string) => LEGACY_CATEGORY_ID_MAP[id] ?? id
-        const migElId = (id: string) => LEGACY_ELEMENT_ID_MAP[id] ?? id
         const categories = Array.isArray(parsed.categories)
           ? parsed.categories.map((c) => ({ ...c, id: migId(c.id) }))
           : INITIAL_WORKSPACE.categories
         const elements = parsed.elements.map((e) => ({
           ...e,
-          id: migElId(e.id),
           categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
         }))
         // 已解锁元素库：优先读存档；缺省时从当前实例推导（保证图鉴不因消耗而丢失元素）
@@ -87,7 +80,6 @@ function loadStoredWorkspace(): StoredWorkspace {
         if (Array.isArray(parsed.unlockedElements) && parsed.unlockedElements.length > 0) {
           unlockedElements = parsed.unlockedElements.map((e) => ({
             ...e,
-            id: migElId(e.id),
             categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
           }))
         } else {
@@ -95,16 +87,9 @@ function loadStoredWorkspace(): StoredWorkspace {
           for (const e of elements) map.set(e.id, e)
           unlockedElements = Array.from(map.values())
         }
-        // 配方中的元素 ID 同步迁移（old 引用 wind 的配方改为 air）
-        const recipes = parsed.recipes.map((r) => ({
-          ...r,
-          inputA: migElId(r.inputA),
-          inputB: migElId(r.inputB),
-          outputs: r.outputs.map(migElId),
-        }))
         return {
           elements,
-          recipes,
+          recipes: parsed.recipes,
           categories,
           unlockedElements,
           // 历史记录：仅保留合法条目，截断到最近 50 条
