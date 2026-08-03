@@ -69,14 +69,17 @@ export default function App() {
   }, [])
 
   // ---- Toast ----
-  const pushToast = useCallback((title: string, elementsData?: ToastData['elements'], kind: ToastData['kind'] = 'success') => {
-    toastId.current += 1
-    const id = toastId.current
-    setToasts((prev) => [...prev.slice(-3), { id, title, elements: elementsData, kind }])
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 3200)
-  }, [])
+  const pushToast = useCallback(
+    (title: string, elementsData?: ToastData['elements'], kind: ToastData['kind'] = 'success', content?: string) => {
+      toastId.current += 1
+      const id = toastId.current
+      setToasts((prev) => [...prev.slice(-3), { id, title, elements: elementsData, kind, content }])
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id))
+      }, 4200)
+    },
+    [],
+  )
 
   // ---- 合成 ----
   const handleCraft = useCallback(
@@ -117,6 +120,10 @@ export default function App() {
           : outcome.known.join('、') || '？'
       }`
       pushToast(`⚗️ ${formulaTitle}`, outcomeElements, 'success')
+      // AI 合成的炼金术笔记：以 toast 正文展示（无需进历史界面）
+      if (outcome.type === 'ai' && outcome.note) {
+        pushToast('📓 贤者之石低语', undefined, 'info', outcome.note)
+      }
       // 合成完成，清空合成元素展示
       setTimeout(() => setCraftInputs([]), 500)
     },
@@ -141,6 +148,18 @@ export default function App() {
       }
     },
     [deleteConfirm, elements, removeElementInstance, pushToast],
+  )
+
+  // ---- 拖入垃圾桶删除实例（无需二次确认） ----
+  const handleDeleteToTrash = useCallback(
+    (index: number) => {
+      const el = elements[index]
+      if (!el) return
+      removeElementInstance(index)
+      setSelectedIndex(null)
+      pushToast(`已丢弃：${el.name}`, undefined, 'info')
+    },
+    [elements, removeElementInstance, pushToast],
   )
 
   // ---- 从图鉴添加到桌面 ----
@@ -333,6 +352,7 @@ export default function App() {
         onCraft={handleCraft}
         onDuplicate={handleDuplicate}
         onOpenLibrary={() => setShowCodex(true)}
+        onDeleteToTrash={handleDeleteToTrash}
       />
 
       {/* 底部提示条 */}

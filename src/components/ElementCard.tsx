@@ -62,7 +62,8 @@ function ElementCardInner({
         selected
           ? 'border-amber-400 ring-2 ring-amber-400/50'
           : 'border-purple-500/40',
-        listeners ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+        // 可拖拽时禁用触摸默认行为（页面滚动/缩放），否则移动端拖不动
+        listeners ? 'cursor-grab dnd-card active:cursor-grabbing' : 'cursor-pointer',
         isDragging ? 'opacity-40 scale-105 ring-4 ring-amber-400/60 z-50' : '',
         isDragOver
           ? 'drag-over-active'

@@ -57,6 +57,8 @@ export interface CraftHistoryEntry {
   source: 'local' | 'ai'
   /** AI 生成时是否出现了新元素 */
   newCount?: number
+  /** AI 生成时的炼金术笔记（AI 路径才有） */
+  note?: string
 }
 
 /** 工作区完整状态快照 */

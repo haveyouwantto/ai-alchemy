@@ -11,7 +11,6 @@ import {
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
 import type { Element } from '../types'
 import { ElementCard } from './ElementCard'
-import { SPAWN_BOUNDS } from '../constants'
 
 interface WorkspaceProps {
   elements: Element[]
@@ -21,12 +20,26 @@ interface WorkspaceProps {
   onCraft: (a: Element, b: Element) => void
   onDuplicate: (element: Element) => void
   onOpenLibrary: () => void
+  /** 拖入垃圾桶时删除对应实例 */
+  onDeleteToTrash: (index: number) => void
 }
 
 /** 获取元素的稳定 key */
 function uidKey(el: Element, index: number): string {
   return el.instanceUid ?? `${el.id}#${index}`
 }
+
+/** 像素坐标 */
+interface Pos {
+  x: number
+  y: number
+}
+
+/** 卡片自身尺寸（含边框/边距的大致占位，用于初始摆位避免重叠） */
+const CARD_GUESS = { w: 110, h: 130 }
+
+/** 工作区留白（px） */
+const PADDING = 24
 
 /** 可拖拽且可放置的元素卡 */
 function DraggableCard({
@@ -93,13 +106,15 @@ export function Workspace({
   onCraft,
   onDuplicate,
   onOpenLibrary,
+  onDeleteToTrash,
 }: WorkspaceProps) {
   const [dragOverId, setDragOverId] = useState<string | null>(null)
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
+  /** 元素位置（像素坐标，相对工作区容器左上角） */
+  const [positions, setPositions] = useState<Record<string, Pos>>({})
   const positionCounter = useRef(0)
-  /** 最近一次合成时两张输入卡的中心位置（百分比坐标），用于新元素围绕它生成 */
-  const lastCraftCenter = useRef<{ x: number; y: number } | null>(null)
-  /** 工作区容器引用：用于把像素位移换算成容器百分比坐标 */
+  /** 最近一次合成时两张输入卡的中心位置（像素坐标），用于新元素围绕它生成 */
+  const lastCraftCenter = useRef<Pos | null>(null)
+  /** 工作区容器引用 */
   const containerRef = useRef<HTMLDivElement>(null)
 
   // 响应式卡片尺寸
@@ -115,9 +130,17 @@ export function Workspace({
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  /** 为新增实例分配位置：首次出现时围绕最近合成中心（若存在）散布，否则随机 */
+  /** 为新增实例分配位置（px，基于容器实际尺寸）：首次出现时围绕最近合成中心（若存在）散布，否则随机 */
   useEffect(() => {
     setPositions((prev) => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      const cw = rect?.width ?? window.innerWidth
+      const ch = rect?.height ?? window.innerHeight
+      const minX = PADDING
+      const minY = PADDING
+      const maxX = Math.max(minX + 1, cw - CARD_GUESS.w - PADDING)
+      const maxY = Math.max(minY + 1, ch - CARD_GUESS.h - PADDING)
+
       const next = { ...prev }
       let changed = false
       elements.forEach((el, index) => {
@@ -129,14 +152,20 @@ export function Workspace({
           let y: number
           const center = lastCraftCenter.current
           if (center) {
-            // 围绕中心 ±9% 散布（扇形，避免重叠）
+            // 围绕中心散布（扇形，避免重叠）
             const angle = (seed * 137.5 * Math.PI) / 180
-            const radius = 4 + (seed % 5) * 2.5
-            x = Math.min(SPAWN_BOUNDS.max, Math.max(SPAWN_BOUNDS.min, center.x + Math.cos(angle) * radius))
-            y = Math.min(SPAWN_BOUNDS.max, Math.max(SPAWN_BOUNDS.min, center.y + Math.sin(angle) * radius))
+            const radius = 50 + (seed % 5) * 30
+            x = Math.min(maxX, Math.max(minX, center.x + Math.cos(angle) * radius))
+            y = Math.min(maxY, Math.max(minY, center.y + Math.sin(angle) * radius))
           } else {
-            x = SPAWN_BOUNDS.min + ((seed * 37) % (SPAWN_BOUNDS.max - SPAWN_BOUNDS.min + 1))
-            y = SPAWN_BOUNDS.min + ((seed * 53) % (SPAWN_BOUNDS.max - SPAWN_BOUNDS.min + 1))
+            const cols = Math.max(1, Math.floor(cw / 150))
+            const rows = Math.max(1, Math.floor(ch / 170))
+            const col = seed % cols
+            const row = Math.floor(seed / cols) % rows
+            x = minX + col * 150 + ((seed * 37) % 40)
+            y = minY + row * 170 + ((seed * 53) % 40)
+            x = Math.min(maxX, x)
+            y = Math.min(maxY, y)
           }
           next[key] = { x, y }
           changed = true
@@ -148,22 +177,45 @@ export function Workspace({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    // 移动端：更短的按压延迟 + 更宽容差，让手指轻轻按住即可拖起，无需 <250ms 的精确长按
+    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 10 } }),
   )
 
   const activeKeyRef = useRef<string | null>(null)
-  const activeStartPos = useRef<{ x: number; y: number } | null>(null)
+  const activeStartPos = useRef<Pos | null>(null)
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const key = String(event.active.id)
-    activeKeyRef.current = key
-    activeStartPos.current = positions[key] ?? null
-  }, [positions])
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const key = String(event.active.id)
+      activeKeyRef.current = key
+      activeStartPos.current = positions[key] ?? null
+      setIsDraggingAny(true)
+    },
+    [positions],
+  )
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over ? String(event.over.id) : null
     setDragOverId(overId && overId.startsWith('drop-') ? overId : null)
   }, [])
+
+  // ---- 垃圾桶（拖入即删实例） ----
+  const { setNodeRef: setTrashRef, isOver: isOverTrash } = useDroppable({ id: 'trash-can' })
+  const [isDraggingAny, setIsDraggingAny] = useState(false)
+  const handleDeleteToTrash = useCallback(
+    (activeKey: string) => {
+      const aIndex = elements.findIndex((el, i) => uidKey(el, i) === activeKey)
+      if (aIndex < 0) return
+      // 清理该实例的位置记录
+      setPositions((prev) => {
+        const next = { ...prev }
+        delete next[activeKey]
+        return next
+      })
+      onDeleteToTrash(aIndex)
+    },
+    [elements, onDeleteToTrash],
+  )
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -172,9 +224,17 @@ export function Workspace({
       const targetKey = overRaw && overRaw.startsWith('drop-') ? overRaw.slice(5) : null
       setDragOverId(null)
       activeKeyRef.current = null
+      setIsDraggingAny(false)
 
       const aIndex = elements.findIndex((el, i) => uidKey(el, i) === activeKey)
       if (aIndex < 0) {
+        activeStartPos.current = null
+        return
+      }
+
+      // 拖入垃圾桶 → 删除实例
+      if (overRaw === 'trash-can') {
+        handleDeleteToTrash(activeKey)
         activeStartPos.current = null
         return
       }
@@ -197,23 +257,21 @@ export function Workspace({
         return
       }
 
-      // 拖到空白处（或原地）→ 移动卡片位置
+      // 拖到空白处（或原地）→ 移动卡片位置（px：直接累加位移）
       if (event.delta) {
-        const rect = containerRef.current?.getBoundingClientRect()
-        if (!rect || rect.width <= 0 || rect.height <= 0) {
-          activeStartPos.current = null
-          return
-        }
-        const dxPct = (event.delta.x / rect.width) * 100
-        const dyPct = (event.delta.y / rect.height) * 100
+        const dx = event.delta.x
+        const dy = event.delta.y
         setPositions((prev) => {
           const cur = prev[activeKey]
           if (!cur) return prev
+          const rect = containerRef.current?.getBoundingClientRect()
+          const maxX = rect ? rect.width - CARD_GUESS.w - PADDING : cur.x + dx
+          const maxY = rect ? rect.height - CARD_GUESS.h - PADDING : cur.y + dy
           const next = {
             ...prev,
             [activeKey]: {
-              x: Math.min(SPAWN_BOUNDS.max, Math.max(SPAWN_BOUNDS.min, cur.x + dxPct)),
-              y: Math.min(SPAWN_BOUNDS.max, Math.max(SPAWN_BOUNDS.min, cur.y + dyPct)),
+              x: Math.min(maxX, Math.max(PADDING, cur.x + dx)),
+              y: Math.min(maxY, Math.max(PADDING, cur.y + dy)),
             },
           }
           return next
@@ -230,6 +288,7 @@ export function Workspace({
     setDragOverId(null)
     activeKeyRef.current = null
     activeStartPos.current = null
+    setIsDraggingAny(false)
   }, [])
 
   const dragOverTargetKey = useMemo(() => {
@@ -248,15 +307,18 @@ export function Workspace({
       >
         {elements.map((el, index) => {
           const key = uidKey(el, index)
-          const pos = positions[key] ?? { x: 15 + (index % 5) * 15, y: 15 + (index % 4) * 15 }
+          // 兜底位置：默认网格排布（px）
+          const pos = positions[key] ?? {
+            x: PADDING + (index % 5) * 150,
+            y: PADDING + (index % 4) * 170,
+          }
           return (
             <div
               key={key}
               className="absolute"
               style={{
-                left: `${pos.x}%`,
-                top: `${pos.y}%`,
-                transform: 'translate(-50%, -50%)',
+                left: pos.x,
+                top: pos.y,
                 zIndex: dragOverTargetKey === key ? 30 : 10,
               }}
             >
@@ -273,6 +335,21 @@ export function Workspace({
             </div>
           )
         })}
+
+        {/* 垃圾桶：拖入即删除实例 */}
+        <div
+          ref={setTrashRef}
+          className={`absolute bottom-4 right-4 z-20 flex h-16 w-16 items-center justify-center rounded-2xl border-2 text-3xl transition-all duration-200 ${
+            isOverTrash
+              ? 'scale-110 border-red-400 bg-red-900/80 shadow-lg shadow-red-500/30'
+              : isDraggingAny
+                ? 'border-amber-400/60 bg-purple-900/70'
+                : 'border-purple-500/25 bg-purple-900/40'
+          }`}
+          title="拖拽元素到垃圾桶删除"
+        >
+          <span className={isOverTrash ? 'animate-bounce' : ''}>🗑️</span>
+        </div>
 
         {/* 空态 */}
         {elements.length === 0 && (

@@ -25,7 +25,7 @@ const MAX_HISTORY_LIMIT = 50
 /** 合成结果类型 */
 export type CraftOutcome =
   | { type: 'local'; added: Element[]; known: string[] }
-  | { type: 'ai'; added: Element[]; known: string[]; newCount: number; recipeCount: number }
+  | { type: 'ai'; added: Element[]; known: string[]; newCount: number; recipeCount: number; note?: string }
   | { type: 'error'; message: string }
 
 interface StateRef {
@@ -41,6 +41,11 @@ const STORAGE_KEY = 'alchemy-workspace-data'
 /** 旧拼音类别 ID → 英文 ID 迁移映射 */
 const LEGACY_CATEGORY_ID_MAP: Record<string, string> = {
   tian_di_wan_xiang: 'cosmos',
+}
+
+/** 旧元素 ID → 新元素 ID 迁移映射（如 wind → air） */
+const LEGACY_ELEMENT_ID_MAP: Record<string, string> = {
+  wind: 'air',
 }
 
 interface StoredWorkspace {
@@ -66,13 +71,15 @@ function loadStoredWorkspace(): StoredWorkspace {
         craftHistory?: CraftHistoryEntry[]
       }
       if (Array.isArray(parsed.elements) && Array.isArray(parsed.recipes)) {
-        // 迁移类别 ID
+        // 迁移类别 ID 与旧元素 ID（wind → air）
         const migId = (id: string) => LEGACY_CATEGORY_ID_MAP[id] ?? id
+        const migElId = (id: string) => LEGACY_ELEMENT_ID_MAP[id] ?? id
         const categories = Array.isArray(parsed.categories)
           ? parsed.categories.map((c) => ({ ...c, id: migId(c.id) }))
           : INITIAL_WORKSPACE.categories
         const elements = parsed.elements.map((e) => ({
           ...e,
+          id: migElId(e.id),
           categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
         }))
         // 已解锁元素库：优先读存档；缺省时从当前实例推导（保证图鉴不因消耗而丢失元素）
@@ -80,6 +87,7 @@ function loadStoredWorkspace(): StoredWorkspace {
         if (Array.isArray(parsed.unlockedElements) && parsed.unlockedElements.length > 0) {
           unlockedElements = parsed.unlockedElements.map((e) => ({
             ...e,
+            id: migElId(e.id),
             categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
           }))
         } else {
@@ -87,9 +95,16 @@ function loadStoredWorkspace(): StoredWorkspace {
           for (const e of elements) map.set(e.id, e)
           unlockedElements = Array.from(map.values())
         }
+        // 配方中的元素 ID 同步迁移（old 引用 wind 的配方改为 air）
+        const recipes = parsed.recipes.map((r) => ({
+          ...r,
+          inputA: migElId(r.inputA),
+          inputB: migElId(r.inputB),
+          outputs: r.outputs.map(migElId),
+        }))
         return {
           elements,
-          recipes: parsed.recipes,
+          recipes,
           categories,
           unlockedElements,
           // 历史记录：仅保留合法条目，截断到最近 50 条
@@ -130,16 +145,19 @@ export function useWorkspace() {
     const stored = loadStoredWorkspace()
     const defaultCategory = INITIAL_WORKSPACE.categories[0]
     return {
-      elements: stored.elements.map((e) => ({
-        ...e,
-        instanceUid: e.instanceUid ?? uuid(),
-        id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
-        description: e.description ?? '',
-        categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
-        // 基础四元素始终采用官方最新图标（如土的棕色粉末堆）
-        svg:
-          (INITIAL_ELEMENTS.find((def) => def.id === e.id)?.svg ?? e.svg),
-      })),
+      elements: stored.elements.map((e) => {
+        const official = INITIAL_ELEMENTS.find((def) => def.id === e.id)
+        return {
+          ...e,
+          instanceUid: e.instanceUid ?? uuid(),
+          id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
+          description: e.description ?? '',
+          categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
+          // 基础元素始终采用官方最新名称与图标（旧存档「风」→「气」+ 棕色粉末堆土）
+          name: official?.name ?? e.name,
+          svg: official?.svg ?? e.svg,
+        }
+      }),
       recipes: stored.recipes,
       // 基础类别（如天地万象）始终采用官方最新描述与图标，旧存档即时生效
       categories:
@@ -149,13 +167,18 @@ export function useWorkspace() {
               return official ? { ...c, description: official.description, icon: official.icon } : c
             })
           : INITIAL_WORKSPACE.categories,
-      unlockedElements: stored.unlockedElements.map((e) => ({
-        ...e,
-        id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
-        description: e.description ?? '',
-        categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
-        svg: INITIAL_ELEMENTS.find((def) => def.id === e.id)?.svg ?? e.svg,
-      })),
+      unlockedElements: stored.unlockedElements.map((e) => {
+        const official = INITIAL_ELEMENTS.find((def) => def.id === e.id)
+        return {
+          ...e,
+          id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
+          description: e.description ?? '',
+          categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
+          // 基础元素始终采用官方最新名称与图标
+          name: official?.name ?? e.name,
+          svg: official?.svg ?? e.svg,
+        }
+      }),
       craftHistory: stored.craftHistory,
     }
   }, [])
@@ -454,6 +477,8 @@ export function useWorkspace() {
         const newElementIdByName = new Map<string, string>() // 元素名 -> 元素ID
         const createdCategories: ElementCategory[] = []
         let recipeOutputIds: string[] = []
+        // 炼金术笔记：累积 AI 流式输出的思考文字
+        let craftNote = ''
 
         // ---- 多轮循环 ----
         for (let round = 0; round < MAX_AI_ROUNDS; round++) {
@@ -462,6 +487,7 @@ export function useWorkspace() {
             messages,
             [...FUNCTIONS],
             (text) => {
+              craftNote += text
               onStream?.(text)
               onMessage('贤者之石充能中...')
             },
@@ -674,17 +700,19 @@ export function useWorkspace() {
         const added = producedInstances.map((e) => ({ ...e }))
         const known: string[] = []
 
-        // 记录合成历史（每次触发记一条）
+        // 记录合成历史（每次触发记一条，附炼金术笔记）
+        const finalNote = craftNote.trim()
         addCraftHistoryEntry({
           inputA: { id: inputA.id, name: inputA.name, svg: inputA.svg },
           inputB: { id: inputB.id, name: inputB.name, svg: inputB.svg },
           outputs: producedInstances.map((e) => ({ id: e.id, name: e.name, svg: e.svg })),
           source: 'ai',
           newCount: newElements.length,
+          note: finalNote || undefined,
         })
 
         onMessage('凝固新元素...')
-        return { type: 'ai', added, known, newCount: newElements.length, recipeCount: 1 }
+        return { type: 'ai', added, known, newCount: newElements.length, recipeCount: 1, note: finalNote || undefined }
       } finally {
         setIsCrafting(false)
       }
@@ -770,8 +798,13 @@ export function useWorkspace() {
                 }))
             : importedElements.map((e) => ({ ...e, instanceUid: undefined }))
 
-        // 规范化导入的配方（过滤不存在的元素引用）
-        const validIds = new Set(importedElements.map((e) => e.id))
+        // 规范化导入的配方（过滤不存在的元素引用）。
+        // ★ 必须用「已解锁图鉴库 + 桌面实例」的并集来验证 ID：
+        //   只存在于图鉴（无桌面实例）的元素，其配方同样应保留，否则导入后会发现配方凭空消失。
+        const validIds = new Set([
+          ...importedElements.map((e) => e.id),
+          ...importedUnlocked.map((e) => e.id),
+        ])
         const importedRecipes: Recipe[] = data.recipes
           .filter(
             (r) =>

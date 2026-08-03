@@ -5,6 +5,8 @@ export interface ToastData {
   title: string
   elements?: Array<{ name: string; svg: string }>
   kind?: 'success' | 'error' | 'info'
+  /** 附加正文（如 AI 炼金术笔记，可多行） */
+  content?: string
 }
 
 interface ToastProps {
@@ -48,6 +50,11 @@ function ToastItem({ toast }: { toast: ToastData }) {
               <span className="font-semibold text-emerald-300">
                 {toast.elements.map((e) => e.name).join('、')}
               </span>
+            </p>
+          )}
+          {toast.content && (
+            <p className="mt-1 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-purple-300/90">
+              {toast.content}
             </p>
           )}
         </div>
