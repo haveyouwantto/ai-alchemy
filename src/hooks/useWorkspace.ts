@@ -563,16 +563,18 @@ export function useWorkspace() {
                 const desc = draft.description?.trim()
                 const svgRaw = draft.svg_content?.trim()
                 const catRaw = draft.category_id?.trim()
-                // 前端兜底：若已解锁库中存在同名/同ID元素，直接复用模板（合法路径，不算参数错误）
+                // 若与已有元素同名或同ID → 报错，并附上已存在元素的详细信息，引导 AI 引用已有 ID 或改名
                 const existingByName = name ? stateRef.current.unlockedElements.find((e) => e.name === name) : undefined
                 const existingById = elementId ? stateRef.current.unlockedElements.find((e) => e.id === elementId) : undefined
                 const existing = existingByName ?? existingById
                 if (existing) {
-                  newElementRefs.set(existing.id, existing.id)
-                  if (name) newElementIdByName.set(name, existing.id)
-                  newElementIdByName.set(existing.name, existing.id)
-                  createdResults.push({ name: existing.name, id: existing.id })
-                  continue
+                  const catName =
+                    stateRef.current.categories.find((c) => c.id === existing.categoryId)?.name ?? existing.categoryId
+                  toolError =
+                    `new_elements[${i}] 与已有元素重复（id=${existing.id}, name="${existing.name}", ` +
+                    `category="${catName}(id=${existing.categoryId})", description="${existing.description}"）。` +
+                    `请直接引用已有元素 ID「${existing.id}」作为产物，不要重复创建；如需全新元素请换一个不同的 id 和 name`
+                  break
                 }
                 if (!name) toolError = `new_elements[${i}] 的 name 缺失`
                 else if (!elementId) toolError = `new_elements[${i}]（${name}）的 id 缺失或非法（需小写字母/数字/下划线）`
