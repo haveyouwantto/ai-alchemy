@@ -64,36 +64,24 @@ export function HistoryPanel({ history, open, onClose, onClear }: HistoryPanelPr
     return Array.from(map.entries())
   }, [history])
 
-  // 分页：按记录条数切页（每页可跨多个日期分组）
+  // 分页：扁平化后按 PAGE_SIZE 切页，再按日期重组（简单可靠）
   const totalCount = groups.reduce((n, [, entries]) => n + entries.length, 0)
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
 
   const visibleGroups = useMemo(() => {
-    const result: Array<[string, CraftHistoryEntry[]]> = []
-    let count = 0
-    let collecting = false
+    const items: Array<{ date: string; entry: CraftHistoryEntry }> = []
     for (const [date, entries] of groups) {
-      if (!collecting) {
-        // 定位到本页起始位置
-        if (count + entries.length > safePage * PAGE_SIZE) {
-          collecting = true
-          const skip = safePage * PAGE_SIZE - count
-          const slice = entries.slice(skip)
-          result.push([date, slice])
-          count += slice.length
-        } else {
-          count += entries.length
-        }
-      } else {
-        const remaining = (safePage + 1) * PAGE_SIZE - count
-        if (remaining <= 0) break
-        const slice = entries.slice(0, remaining)
-        result.push([date, slice])
-        count += slice.length
-      }
+      for (const entry of entries) items.push({ date, entry })
     }
-    return result
+    const pageItems = items.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+    const map = new Map<string, CraftHistoryEntry[]>()
+    for (const { date, entry } of pageItems) {
+      const arr = map.get(date) ?? []
+      arr.push(entry)
+      map.set(date, arr)
+    }
+    return Array.from(map.entries())
   }, [groups, safePage])
 
   if (!open) return null

@@ -757,17 +757,28 @@ export function useWorkspace() {
     [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, consumeInputs, bumpUseCount, unlockElements, addCraftHistoryEntry],
   )
 
-  /** 导出工作区为 ZIP（manifest.json） */
+  /** 导出工作区为 ZIP（manifest.json 仅含基础信息，数据拆分独立 JSON 文件） */
   const exportWorkspace = useCallback(async (): Promise<Blob> => {
-    const manifest: Workspace & { unlockedElements: Element[]; craftHistory: CraftHistoryEntry[] } = {
-      elements: stateRef.current.elements,
-      recipes: stateRef.current.recipes,
-      categories: stateRef.current.categories,
-      unlockedElements: stateRef.current.unlockedElements,
-      craftHistory: stateRef.current.craftHistory,
+    const now = new Date()
+    const manifest = {
+      formatVersion: 2,
+      exportedAt: now.toISOString(),
+      title: 'AI 炼金术工坊存档',
+      files: {
+        elements: 'elements.json',
+        recipes: 'recipes.json',
+        categories: 'categories.json',
+        unlockedElements: 'unlockedElements.json',
+        craftHistory: 'craftHistory.json',
+      },
     }
     const zip = new JSZip()
     zip.file('manifest.json', JSON.stringify(manifest, null, 2))
+    zip.file('elements.json', JSON.stringify(stateRef.current.elements, null, 2))
+    zip.file('recipes.json', JSON.stringify(stateRef.current.recipes, null, 2))
+    zip.file('categories.json', JSON.stringify(stateRef.current.categories, null, 2))
+    zip.file('unlockedElements.json', JSON.stringify(stateRef.current.unlockedElements, null, 2))
+    zip.file('craftHistory.json', JSON.stringify(stateRef.current.craftHistory, null, 2))
     return await zip.generateAsync({ type: 'blob' })
   }, [])
 
@@ -780,13 +791,65 @@ export function useWorkspace() {
         if (!manifestFile) {
           return { ok: false, message: 'ZIP 内未找到 manifest.json' }
         }
-        const raw = await manifestFile.async('text')
-        const data = JSON.parse(raw) as Workspace & {
+        const readJson = async <T>(name: string): Promise<T | null> => {
+          const f = zip.file(name)
+          if (!f) return null
+          try {
+            return JSON.parse(await f.async('text')) as T
+          } catch {
+            return null
+          }
+        }
+
+        // manifest: 仅基础信息（formatVersion/time）。数据从独立 JSON 文件读取。
+        const manifest = JSON.parse(await manifestFile.async('text')) as {
+          formatVersion?: number
+          data?: {
+            elements?: string
+            recipes?: string
+            categories?: string
+            unlockedElements?: string
+            craftHistory?: string
+          }
+        }
+        // v2 新格式：各数据独立文件；File 名也可由 manifest.json 内层 files 指定
+        const fileNames = (manifest as { files?: Record<string, string> }).files ?? {}
+        const nameOf = (key: string, fallback: string) => fileNames[key] ?? fallback
+
+        let data: Workspace & {
           unlockedElements?: Element[]
           craftHistory?: CraftHistoryEntry[]
+        } | null = null
+
+        if (manifest.formatVersion === 2) {
+          const [elements, recipes, categories, unlockedElements, craftHistory] = await Promise.all([
+            readJson<Element[]>(nameOf('elements', 'elements.json')),
+            readJson<Recipe[]>(nameOf('recipes', 'recipes.json')),
+            readJson<ElementCategory[]>(nameOf('categories', 'categories.json')),
+            readJson<Element[]>(nameOf('unlockedElements', 'unlockedElements.json')),
+            readJson<CraftHistoryEntry[]>(nameOf('craftHistory', 'craftHistory.json')),
+          ])
+          if (Array.isArray(elements) && Array.isArray(recipes)) {
+            data = {
+              elements,
+              recipes,
+              categories: categories ?? [],
+              unlockedElements: unlockedElements ?? undefined,
+              craftHistory: craftHistory ?? undefined,
+            }
+          }
+        } else {
+          // v1 旧格式：manifest.json 内嵌全部数据
+          const legacy = JSON.parse(await manifestFile.async('text')) as Workspace & {
+            unlockedElements?: Element[]
+            craftHistory?: CraftHistoryEntry[]
+          }
+          if (Array.isArray(legacy.elements) && Array.isArray(legacy.recipes)) {
+            data = legacy
+          }
         }
-        if (!Array.isArray(data.elements) || !Array.isArray(data.recipes)) {
-          return { ok: false, message: 'manifest.json 格式不正确' }
+        if (!data) {
+          return { ok: false, message: 'manifest.json 格式不正确或数据文件缺失' }
         }
 
         // 规范化类别（保证字段完整）
