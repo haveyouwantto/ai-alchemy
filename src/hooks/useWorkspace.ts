@@ -4,6 +4,7 @@ import type {
   AIConfig,
   ChatMessage,
   CraftElementsArgs,
+  CraftHistoryEntry,
   CraftRecipeArgs,
   CreateCategoryArgs,
   Element,
@@ -18,6 +19,9 @@ import { sanitizeSVG, uuid } from '../utils'
 /** AI 多轮工具调用的最大轮数 */
 const MAX_AI_ROUNDS = 6
 
+/** 合成历史保留的最大条数（最近 50 条） */
+const MAX_HISTORY_LIMIT = 50
+
 /** 合成结果类型 */
 export type CraftOutcome =
   | { type: 'local'; added: Element[]; known: string[] }
@@ -29,6 +33,7 @@ interface StateRef {
   recipes: Recipe[]
   categories: ElementCategory[]
   unlockedElements: Element[]
+  craftHistory: CraftHistoryEntry[]
 }
 
 const STORAGE_KEY = 'alchemy-workspace-data'
@@ -44,6 +49,8 @@ interface StoredWorkspace {
   categories: ElementCategory[]
   /** 已解锁的元素类型库（图鉴数据源，独立于工作区实例，不会被消耗删除） */
   unlockedElements: Element[]
+  /** 合成触发流水（最近 50 条） */
+  craftHistory: CraftHistoryEntry[]
 }
 
 /**
@@ -54,7 +61,10 @@ function loadStoredWorkspace(): StoredWorkspace {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<Workspace> & { unlockedElements?: Element[] }
+      const parsed = JSON.parse(raw) as Partial<Workspace> & {
+        unlockedElements?: Element[]
+        craftHistory?: CraftHistoryEntry[]
+      }
       if (Array.isArray(parsed.elements) && Array.isArray(parsed.recipes)) {
         // 迁移类别 ID
         const migId = (id: string) => LEGACY_CATEGORY_ID_MAP[id] ?? id
@@ -77,13 +87,32 @@ function loadStoredWorkspace(): StoredWorkspace {
           for (const e of elements) map.set(e.id, e)
           unlockedElements = Array.from(map.values())
         }
-        return { elements, recipes: parsed.recipes, categories, unlockedElements }
+        return {
+          elements,
+          recipes: parsed.recipes,
+          categories,
+          unlockedElements,
+          // 历史记录：仅保留合法条目，截断到最近 50 条
+          craftHistory: Array.isArray(parsed.craftHistory)
+            ? parsed.craftHistory
+                .filter(
+                  (h) =>
+                    h &&
+                    typeof h.id === 'string' &&
+                    typeof h.timestamp === 'number' &&
+                    h.inputA &&
+                    h.inputB &&
+                    Array.isArray(h.outputs),
+                )
+                .slice(-MAX_HISTORY_LIMIT)
+            : [],
+        }
       }
     }
   } catch {
     // ignore corrupted storage
   }
-  return { ...INITIAL_WORKSPACE, unlockedElements: INITIAL_WORKSPACE.elements }
+  return { ...INITIAL_WORKSPACE, unlockedElements: INITIAL_WORKSPACE.elements, craftHistory: [] }
 }
 
 /** 规范化元素 ID：小写字符 + 下划线 */
@@ -127,6 +156,7 @@ export function useWorkspace() {
         categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
         svg: INITIAL_ELEMENTS.find((def) => def.id === e.id)?.svg ?? e.svg,
       })),
+      craftHistory: stored.craftHistory,
     }
   }, [])
 
@@ -135,24 +165,29 @@ export function useWorkspace() {
   const [categories, setCategories] = useState<ElementCategory[]>(initial.categories)
   /** 已解锁元素类型库（图鉴数据源，独立于工作区实例，不会因消耗/删除而消失） */
   const [unlockedElements, setUnlockedElements] = useState<Element[]>(initial.unlockedElements)
+  /** 合成触发流水（最近 50 条） */
+  const [craftHistory, setCraftHistory] = useState<CraftHistoryEntry[]>(initial.craftHistory)
 
   // 正在合成中（防止重复拖拽）
   const [isCrafting, setIsCrafting] = useState(false)
 
   // 引用，用于异步回调中读取最新状态
-  const stateRef = useRef<StateRef>({ elements, recipes, categories, unlockedElements })
+  const stateRef = useRef<StateRef>({ elements, recipes, categories, unlockedElements, craftHistory: [] })
   useEffect(() => {
-    stateRef.current = { elements, recipes, categories, unlockedElements }
-  }, [elements, recipes, categories, unlockedElements])
+    stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory }
+  }, [elements, recipes, categories, unlockedElements, craftHistory])
 
-  // 自动持久化到 localStorage（元素 + 配方 + 类别 + 已解锁元素库）
+  // 自动持久化到 localStorage（元素 + 配方 + 类别 + 图鉴 + 合成历史）
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ elements, recipes, categories, unlockedElements }))
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ elements, recipes, categories, unlockedElements, craftHistory }),
+      )
     } catch {
       // ignore quota / privacy errors
     }
-  }, [elements, recipes, categories, unlockedElements])
+  }, [elements, recipes, categories, unlockedElements, craftHistory])
 
   /** 查找本地配方（双向匹配） */
   const findLocalRecipe = useCallback(
@@ -205,17 +240,17 @@ export function useWorkspace() {
     [],
   )
 
-  /** 重置工作区：清空所有元素、配方和类别，恢复为初始四基础元素 + 天地万象 */
+  /**
+   * 清空桌面：仅清空桌面上的元素实例为初始四基础元素。
+   * 保留：配方书、图鉴（已解锁库）、类别、合成历史 —— 玩家的进度不会丢失。
+   */
   const resetWorkspace = useCallback(() => {
     setElements(INITIAL_WORKSPACE.elements.map((e) => ({ ...e, instanceUid: uuid() })))
-    setRecipes([])
-    setCategories(INITIAL_WORKSPACE.categories)
-    setUnlockedElements(INITIAL_WORKSPACE.elements)
   }, [])
 
   /**
    * 清除全部世界数据（危险操作）：
-   * 删除 localStorage 的世界存档（元素/配方/类别/图鉴）并重置为初始状态。
+   * 删除 localStorage 的世界存档（元素/配方/类别/图鉴/合成历史）并重置为初始状态。
    * 注意：AI 配置（Endpoint/API Key/模型）属于独立的「游戏设置」，不在此清除范围内，予以保留。
    */
   const clearAllData = useCallback(() => {
@@ -228,6 +263,27 @@ export function useWorkspace() {
     setRecipes([])
     setCategories(INITIAL_WORKSPACE.categories)
     setUnlockedElements(INITIAL_WORKSPACE.elements)
+    setCraftHistory([])
+  }, [])
+
+  /** 向合成历史追加一条记录（自动截断到最近 MAX_HISTORY_LIMIT 条） */
+  const addCraftHistoryEntry = useCallback(
+    (entry: Omit<CraftHistoryEntry, 'id' | 'timestamp'>) => {
+      setCraftHistory((prev) => {
+        const next: CraftHistoryEntry = {
+          id: uuid(),
+          timestamp: Date.now(),
+          ...entry,
+        }
+        return [...prev, next].slice(-MAX_HISTORY_LIMIT)
+      })
+    },
+    [],
+  )
+
+  /** 手动清空合成历史 */
+  const clearCraftHistory = useCallback(() => {
+    setCraftHistory([])
   }, [])
 
   /** 将一批元素注册为「已解锁」（图鉴数据；已存在则跳过） */
@@ -284,24 +340,44 @@ export function useWorkspace() {
       if (added.length > 0) {
         setElements((prev) => [...prev, ...added])
       }
+      // 记录合成历史（每次触发记一条）
+      addCraftHistoryEntry({
+        inputA: { id: inputA.id, name: inputA.name, svg: inputA.svg },
+        inputB: { id: inputB.id, name: inputB.name, svg: inputB.svg },
+        outputs: outputs.map((o) => ({ id: o.id, name: o.name, svg: o.svg })),
+        source: 'local',
+      })
       return { type: 'local', added, known }
     },
-    [bumpUseCount, consumeInputs, unlockElements],
+    [bumpUseCount, consumeInputs, unlockElements, addCraftHistoryEntry],
   )
 
   /** 构建 LLM 上下文消息 */
   const buildMessages = useCallback(
     (inputA: Element, inputB: Element): ChatMessage[] => {
-      // 元素列表带描述：使用「已解锁库」（永久保留所有发现过的元素，即使当前不在桌面）
-      const elementList = stateRef.current.unlockedElements
-        .map(
-          (e) =>
-            `${e.name} (ID: ${e.id}, 类别: ${e.categoryId}${e.description ? `, 描述: ${e.description}` : ''})`,
-        )
-        .join('、')
+      // 类别：完整发送（ID、名称、描述）
       const categoryList = stateRef.current.categories
         .map((c) => `${c.name} (ID: ${c.id})：${c.description}`)
         .join('；')
+      // 元素：按类别嵌套分组，仅含名称与 ID（不重复类别字段，不发完整描述以免上下文过长）
+      const categories = stateRef.current.categories
+      const elementsByCategory = categories
+        .map((c) => {
+          const items = stateRef.current.unlockedElements
+            .filter((e) => e.categoryId === c.id)
+            .map((e) => `${e.name} (ID: ${e.id})`)
+          return items.length > 0 ? `「${c.name}」：${items.join('、')}` : null
+        })
+        .filter((s): s is string => !!s)
+      // 未归入任何已知类别的元素兜底（防止遗漏）
+      const knownCategoryIds = new Set(categories.map((c) => c.id))
+      const uncategorized = stateRef.current.unlockedElements
+        .filter((e) => !knownCategoryIds.has(e.categoryId))
+        .map((e) => `${e.name} (ID: ${e.id})`)
+      if (uncategorized.length > 0) {
+        elementsByCategory.push(`「未归类」：${uncategorized.join('、')}`)
+      }
+      const elementList = elementsByCategory.join('\n')
       const relatedRecipes = stateRef.current.recipes.filter(
         (r) =>
           (r.inputA === inputA.id && r.inputB === inputB.id) ||
@@ -598,22 +674,32 @@ export function useWorkspace() {
         const added = producedInstances.map((e) => ({ ...e }))
         const known: string[] = []
 
+        // 记录合成历史（每次触发记一条）
+        addCraftHistoryEntry({
+          inputA: { id: inputA.id, name: inputA.name, svg: inputA.svg },
+          inputB: { id: inputB.id, name: inputB.name, svg: inputB.svg },
+          outputs: producedInstances.map((e) => ({ id: e.id, name: e.name, svg: e.svg })),
+          source: 'ai',
+          newCount: newElements.length,
+        })
+
         onMessage('凝固新元素...')
         return { type: 'ai', added, known, newCount: newElements.length, recipeCount: 1 }
       } finally {
         setIsCrafting(false)
       }
     },
-    [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, consumeInputs, bumpUseCount, unlockElements],
+    [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, consumeInputs, bumpUseCount, unlockElements, addCraftHistoryEntry],
   )
 
   /** 导出工作区为 ZIP（manifest.json） */
   const exportWorkspace = useCallback(async (): Promise<Blob> => {
-    const manifest: Workspace & { unlockedElements: Element[] } = {
+    const manifest: Workspace & { unlockedElements: Element[]; craftHistory: CraftHistoryEntry[] } = {
       elements: stateRef.current.elements,
       recipes: stateRef.current.recipes,
       categories: stateRef.current.categories,
       unlockedElements: stateRef.current.unlockedElements,
+      craftHistory: stateRef.current.craftHistory,
     }
     const zip = new JSZip()
     zip.file('manifest.json', JSON.stringify(manifest, null, 2))
@@ -630,7 +716,10 @@ export function useWorkspace() {
           return { ok: false, message: 'ZIP 内未找到 manifest.json' }
         }
         const raw = await manifestFile.async('text')
-        const data = JSON.parse(raw) as Workspace & { unlockedElements?: Element[] }
+        const data = JSON.parse(raw) as Workspace & {
+          unlockedElements?: Element[]
+          craftHistory?: CraftHistoryEntry[]
+        }
         if (!Array.isArray(data.elements) || !Array.isArray(data.recipes)) {
           return { ok: false, message: 'manifest.json 格式不正确' }
         }
@@ -696,13 +785,52 @@ export function useWorkspace() {
           )
           .map((r) => ({ id: r.id, inputA: r.inputA, inputB: r.inputB, outputs: r.outputs.slice(0, 3) }))
 
+        // 导入合成历史（仅保留合法条目，截断到最近 50 条）
+        const importedHistory: CraftHistoryEntry[] = Array.isArray(data.craftHistory)
+          ? data.craftHistory
+              .filter(
+                (h) =>
+                  h &&
+                  typeof h.id === 'string' &&
+                  typeof h.timestamp === 'number' &&
+                  h.inputA &&
+                  typeof h.inputA.name === 'string' &&
+                  h.inputB &&
+                  typeof h.inputB.name === 'string' &&
+                  Array.isArray(h.outputs),
+              )
+              .map((h) => ({
+                id: h.id,
+                timestamp: h.timestamp,
+                inputA: {
+                  id: h.inputA.id ?? '',
+                  name: h.inputA.name,
+                  svg: typeof h.inputA.svg === 'string' ? h.inputA.svg : '',
+                },
+                inputB: {
+                  id: h.inputB.id ?? '',
+                  name: h.inputB.name,
+                  svg: typeof h.inputB.svg === 'string' ? h.inputB.svg : '',
+                },
+                outputs: h.outputs
+                  .filter(
+                    (o) => o && typeof o.name === 'string' && (typeof o.id === 'string' || typeof o.id === 'undefined'),
+                  )
+                  .map((o) => ({ id: o.id ?? '', name: o.name, svg: typeof o.svg === 'string' ? o.svg : '' })),
+                source: (h.source === 'ai' ? 'ai' : 'local') as 'local' | 'ai',
+                newCount: h.newCount,
+              }))
+              .slice(-MAX_HISTORY_LIMIT)
+          : []
+
         setElements(importedElements)
         setRecipes(importedRecipes)
         setCategories(importedCategories)
         setUnlockedElements(importedUnlocked)
+        setCraftHistory(importedHistory)
         return {
           ok: true,
-          message: `成功导入 ${importedElements.length} 个元素、${importedRecipes.length} 条配方、${importedCategories.length} 个类别`,
+          message: `成功导入 ${importedElements.length} 个元素、${importedRecipes.length} 条配方、${importedCategories.length} 个类别、${importedHistory.length} 条历史`,
         }
       } catch {
         return { ok: false, message: '导入失败：无法解析该文件' }
@@ -746,6 +874,7 @@ export function useWorkspace() {
     recipes,
     categories,
     unlockedElements,
+    craftHistory,
     isCrafting,
     craft,
     exportWorkspace,
@@ -757,6 +886,7 @@ export function useWorkspace() {
     addElementFromLibrary,
     resetWorkspace,
     clearAllData,
+    clearCraftHistory,
     stats,
   }
 }

@@ -3,6 +3,7 @@ import type { AIConfig, Element } from './types'
 import { useWorkspace } from './hooks/useWorkspace'
 import { Workspace } from './components/Workspace'
 import { ElementCodex } from './components/ElementCodex'
+import { HistoryPanel } from './components/HistoryPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { CraftingOverlay } from './components/CraftingOverlay'
 import { ToastContainer } from './components/Toast'
@@ -16,6 +17,7 @@ export default function App() {
     recipes,
     categories,
     unlockedElements,
+    craftHistory,
     isCrafting,
     craft,
     exportWorkspace,
@@ -26,11 +28,13 @@ export default function App() {
     addElementFromLibrary,
     resetWorkspace,
     clearAllData,
+    clearCraftHistory,
     stats,
   } = ws
 
   // ---- UI 状态 ----
   const [showCodex, setShowCodex] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
@@ -157,19 +161,19 @@ export default function App() {
     [duplicateElement, pushToast],
   )
 
-  // ---- 清空桌面 ----
+  // ---- 清空桌面（仅清空实例，保留配方/图鉴/历史） ----
   const [confirmClear, setConfirmClear] = useState(false)
   const handleClearWorkspace = useCallback(() => {
     if (!confirmClear) {
       setConfirmClear(true)
       setTimeout(() => setConfirmClear(false), 2500)
-      pushToast('再次点击「清空」确认重置桌面', undefined, 'info')
+      pushToast('再次点击「清空」确认重置桌面（配方与图鉴保留）', undefined, 'info')
       return
     }
     setConfirmClear(false)
     resetWorkspace()
     setSelectedIndex(null)
-    pushToast('桌面已重置为四基础元素', undefined, 'success')
+    pushToast('桌面已重置，配方/图鉴/历史保留', undefined, 'success')
   }, [confirmClear, resetWorkspace, pushToast])
 
   // ---- 导入 / 导出 ----
@@ -216,6 +220,12 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setShowCodex((v) => !v)
+        return
+      }
+      // Ctrl/Cmd + H → 炼金记录
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'h') {
+        e.preventDefault()
+        setShowHistory((v) => !v)
         return
       }
       // Delete / Backspace → 删除选中
@@ -280,6 +290,13 @@ export default function App() {
               {stats.uniqueCount}
             </span>
           </ToolButton>
+          <ToolButton onClick={() => setShowHistory(true)} title="炼金记录 (Ctrl+H)" active={showHistory}>
+            <span className="text-lg leading-none">📜</span>
+            <span className="hidden sm:inline">记录</span>
+            <span className="rounded-full bg-amber-400/20 px-1.5 text-xs font-bold text-amber-300">
+              {craftHistory.length}
+            </span>
+          </ToolButton>
           <ToolButton onClick={handleExport} title="导出工作区 (ZIP)">
             <span className="text-lg leading-none">💾</span>
             <span className="hidden md:inline">导出</span>
@@ -332,6 +349,15 @@ export default function App() {
         open={showCodex}
         onClose={() => setShowCodex(false)}
         onAdd={handleAddFromCodex}
+      />
+      <HistoryPanel
+        history={craftHistory}
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        onClear={() => {
+          clearCraftHistory()
+          pushToast('炼金记录已清空', undefined, 'info')
+        }}
       />
       <SettingsModal
         open={showSettings}

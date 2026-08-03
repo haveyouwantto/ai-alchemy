@@ -229,14 +229,44 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
           </div>
         </div>
 
-        {/* 类别栏 */}
+        {/* 类别栏：可点击切换筛选 */}
         <div className="alchemy-scroll flex gap-2 overflow-x-auto border-b border-amber-900/20 bg-[#8b5a2b]/90 px-4 py-2">
-          {categories.map((c) => (
-            <div key={c.id} className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-700/50 bg-[#fdf6e3] px-2.5 py-1">
-              <CodexIcon svg={c.icon} size={20} />
-              <span className="text-xs font-semibold text-amber-950">{c.name}</span>
-            </div>
-          ))}
+          <button
+            onClick={() => setCategoryFilter('all')}
+            className={`shrink-0 rounded-full border-2 px-4 py-2 text-sm font-bold transition-all active:scale-95 ${
+              categoryFilter === 'all'
+                ? 'border-amber-400 bg-gradient-to-r from-amber-500 to-orange-500 text-amber-950 shadow-md'
+                : 'border-amber-700/50 bg-[#fdf6e3] text-amber-900 hover:border-amber-500 hover:bg-amber-50'
+            }`}
+          >
+            全部
+          </button>
+          {categories.map((c) => {
+            const count = uniqueElements.filter((e) => e.categoryId === c.id).length
+            const active = categoryFilter === c.id
+            return (
+              <button
+                key={c.id}
+                onClick={() => setCategoryFilter(c.id)}
+                className={`flex shrink-0 items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-bold transition-all active:scale-95 ${
+                  active
+                    ? 'border-amber-400 bg-gradient-to-r from-amber-500 to-orange-500 text-amber-950 shadow-md'
+                    : 'border-amber-700/50 bg-[#fdf6e3] text-amber-900 hover:border-amber-500 hover:bg-amber-50'
+                }`}
+                title={`筛选类别：${c.name}`}
+              >
+                <CodexIcon svg={c.icon} size={22} />
+                <span>{c.name}</span>
+                <span
+                  className={`rounded-full px-1.5 text-xs font-bold ${
+                    active ? 'bg-amber-950/20 text-amber-950' : 'bg-amber-700/15 text-amber-800'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* 书页内容：网格元素图标 tiles（i / + 按钮） */}

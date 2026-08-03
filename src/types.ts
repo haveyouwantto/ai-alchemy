@@ -42,6 +42,23 @@ export interface Recipe {
   outputs: string[] // 元素ID数组 1~3
 }
 
+/** 合成触发记录（流水账：每次触发一次合成记录一条，最多保留最近 50 条） */
+export interface CraftHistoryEntry {
+  /** 记录唯一 ID */
+  id: string
+  /** 触发时间戳 */
+  timestamp: number
+  /** 输入元素快照（名称+SVG，避免元素被改名/删除后历史显示异常） */
+  inputA: { id: string; name: string; svg: string }
+  inputB: { id: string; name: string; svg: string }
+  /** 输出元素快照（名称+SVG） */
+  outputs: Array<{ id: string; name: string; svg: string }>
+  /** 合成来源：本地配方 or AI 生成 */
+  source: 'local' | 'ai'
+  /** AI 生成时是否出现了新元素 */
+  newCount?: number
+}
+
 /** 工作区完整状态快照 */
 export interface Workspace {
   elements: Element[]
