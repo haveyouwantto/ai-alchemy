@@ -22,7 +22,17 @@ const MAX_AI_ROUNDS = 6
 /** 合成结果类型 */
 export type CraftOutcome =
   | { type: 'local'; added: Element[]; known: string[] }
-  | { type: 'ai'; added: Element[]; known: string[]; newCount: number; recipeCount: number; note?: string }
+  | {
+      type: 'ai'
+      added: Element[]
+      known: string[]
+      newCount: number
+      recipeCount: number
+      /** 本次 AI 新创建的元素（仅真正新建的，未重复已有） */
+      newElements: Element[]
+      /** 炼金术笔记（流式思考文本） */
+      note?: string
+    }
   | { type: 'error'; message: string }
 
 interface StateRef {
@@ -692,7 +702,15 @@ export function useWorkspace() {
         })
 
         onMessage('凝固新元素...')
-        return { type: 'ai', added, known, newCount: newElements.length, recipeCount: 1, note: finalNote || undefined }
+        return {
+          type: 'ai',
+          added,
+          known,
+          newCount: newElements.length,
+          recipeCount: 1,
+          newElements,
+          note: finalNote || undefined,
+        }
       } finally {
         setIsCrafting(false)
       }

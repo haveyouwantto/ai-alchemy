@@ -120,9 +120,16 @@ export default function App() {
           : outcome.known.join('、') || '？'
       }`
       pushToast(`⚗️ ${formulaTitle}`, outcomeElements, 'success')
-      // AI 合成的炼金术笔记：以 toast 正文展示（无需进历史界面）
-      if (outcome.type === 'ai' && outcome.note) {
-        pushToast('📓 贤者之石低语', undefined, 'info', outcome.note)
+      // AI 创造新元素：弹出「贤者低语」toast，展示新元素图标与说明
+      if (outcome.type === 'ai' && outcome.newElements.length > 0) {
+        for (const el of outcome.newElements) {
+          pushToast(
+            `✨ 新元素「${el.name}」真身显现`,
+            [{ name: el.name, svg: el.svg }],
+            'success',
+            el.description || '贤者尚未留下笔墨……',
+          )
+        }
       }
       // 合成完成，清空合成元素展示
       setTimeout(() => setCraftInputs([]), 500)
