@@ -29,6 +29,7 @@ export const SYSTEM_PROMPT_TEMPLATE = `你是一个炼金术合成规则生成�
 6. 如果产物是全新的，请调用 craft_elements 创建它：
    - id 必须用英语书写：只能包含小写字母 a-z、数字 0-9 和下划线，单词间用下划线连接。严禁使用中文拼音或非英文字符作为 id
    - name 使用对应的中文名称，不要用英文
+   - category_id 为必填字段，每个新元素都必须明确指定，不得省略：先查看类别列表选用合适的已有类别；若属于全新大类，必须先调用 create_category 创建类别再用其 ID
    - 为它写一段简短的 description（一两句即可）。描述只能刻画该元素本身的形态、性质或象征，严禁提及它是如何被合成的、由谁与谁组合而成、或者任何「合成/炼成/来源/配方/获得方式」相关的字眼
    - 元素应归属到合适的「大类」：当产物属于一个全新的、能容纳多个相近元素的宏大主题时，调用 create_category 创建这个大类别；已有合适的大类别时则直接复用归入。不要为单个元素创建过小或过于独特的类别，仅当产物与现有类别都毫不相干时，才为它建立新的大类别
    - 设计一个极简、抽象、美观的 SVG（画布 100x100，纯矢量）。具体物件要直观可辨，抽象概念则用简单的象征性图形表达
@@ -55,9 +56,9 @@ export const FUNCTIONS = [
                 name: { type: 'string', description: '对应的中文名称' },
                 description: { type: 'string', description: '元素文字描述（中文）' },
                 svg_content: { type: 'string' },
-                category_id: { type: 'string', description: '所属的大类别ID；若该产物属于全新的大主题，请先调用 create_category 创建类别再引用' },
+                category_id: { type: 'string', description: '必填！所属的大类别ID（引用已有类别或先调用 create_category 创建的类别）' },
               },
-              required: ['id', 'name', 'description', 'svg_content'],
+              required: ['id', 'name', 'description', 'svg_content', 'category_id'],
             },
           },
         },
