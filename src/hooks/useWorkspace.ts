@@ -402,16 +402,11 @@ export function useWorkspace() {
       const inputDescA = inputA.description ? `："${inputA.description}"` : ''
       const inputDescB = inputB.description ? `："${inputB.description}"` : ''
 
+      // system：固定不变规则（无动态注入）
       const systemPrompt = SYSTEM_PROMPT_TEMPLATE
-        .replace('[元素列表]', elementList)
-        .replace('[类别列表]', categoryList)
-        .replace('[元素A]', inputA.name)
-        .replace('[元素B]', inputB.name)
-        .concat(
-          `\n本次合成对象的含义：\n${inputA.name}（类别：${catNameOf(inputA.categoryId)}）${inputDescA}\n${inputB.name}（类别：${catNameOf(inputB.categoryId)}）${inputDescB}\n相关已有配方：${recipeDesc}`,
-        )
 
-      const userPrompt = `请现在合成 ${inputA.name} 和 ${inputB.name}，并调用相应工具。`
+      // user：本次合成全部动态数据（类别清单 / 元素图鉴 / 合成对象 / 相关配方）
+      const userPrompt = `【元素类别】\n${categoryList}\n\n【元素图鉴】\n${elementList}\n\n【本次合成对象】\n${inputA.name}（ID: ${inputA.id}，类别：${catNameOf(inputA.categoryId)}）${inputDescA}\n${inputB.name}（ID: ${inputB.id}，类别：${catNameOf(inputB.categoryId)}）${inputDescB}\n\n【相关已有配方】\n${recipeDesc}\n\n请现在合成 ${inputA.name} 和 ${inputB.name}，并调用相应工具。`
 
       return [
         { role: 'system', content: systemPrompt },
