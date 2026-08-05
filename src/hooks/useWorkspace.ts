@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import type {
   AIConfig,
+  CardPosition,
   ChatMessage,
   CraftElementsArgs,
   CraftHistoryEntry,
@@ -41,6 +42,7 @@ interface StateRef {
   categories: ElementCategory[]
   unlockedElements: Element[]
   craftHistory: CraftHistoryEntry[]
+  positions: Record<string, CardPosition>
 }
 
 const STORAGE_KEY = 'alchemy-workspace-data'
@@ -58,6 +60,8 @@ interface StoredWorkspace {
   unlockedElements: Element[]
   /** 合成触发流水（最近 50 条） */
   craftHistory: CraftHistoryEntry[]
+  /** 桌面卡片坐标（key=instanceUid，单位 px，相对工作区容器左上角） */
+  positions?: Record<string, CardPosition>
 }
 
 /**
@@ -71,6 +75,7 @@ function loadStoredWorkspace(): StoredWorkspace {
       const parsed = JSON.parse(raw) as Partial<Workspace> & {
         unlockedElements?: Element[]
         craftHistory?: CraftHistoryEntry[]
+        positions?: Record<string, CardPosition>
       }
       if (Array.isArray(parsed.elements) && Array.isArray(parsed.recipes)) {
         // 仅迁移类别 ID（元素 ID 不迁移：wind 等 ID 让 AI 自由创建「风」）
@@ -106,13 +111,25 @@ function loadStoredWorkspace(): StoredWorkspace {
                   h && typeof h.id === 'string' && typeof h.timestamp === 'number' && typeof h.recipeId === 'string',
               )
             : [],
+          // 桌面坐标：仅保留合法的有限数值
+          positions: (() => {
+            const positions: Record<string, CardPosition> = {}
+            if (parsed.positions && typeof parsed.positions === 'object') {
+              for (const [key, value] of Object.entries(parsed.positions)) {
+                if (value && Number.isFinite(value.x) && Number.isFinite(value.y)) {
+                  positions[key] = { x: value.x, y: value.y }
+                }
+              }
+            }
+            return positions
+          })(),
         }
       }
     }
   } catch {
     // ignore corrupted storage
   }
-  return { ...INITIAL_WORKSPACE, unlockedElements: INITIAL_WORKSPACE.elements, craftHistory: [] }
+  return { ...INITIAL_WORKSPACE, unlockedElements: INITIAL_WORKSPACE.elements, craftHistory: [], positions: {} }
 }
 
 /** 规范化元素 ID：小写字符 + 下划线 */
@@ -129,20 +146,28 @@ export function useWorkspace() {
   const initial = useMemo(() => {
     const stored = loadStoredWorkspace()
     const defaultCategory = INITIAL_WORKSPACE.categories[0]
+    const elements = stored.elements.map((e) => {
+      const official = INITIAL_ELEMENTS.find((def) => def.id === e.id)
+      return {
+        ...e,
+        instanceUid: e.instanceUid ?? uuid(),
+        id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
+        description: e.description ?? '',
+        categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
+        // 基础元素始终采用官方最新名称与图标（旧存档「风」→「气」+ 棕色粉末堆土）
+        name: official?.name ?? e.name,
+        svg: official?.svg ?? e.svg,
+      }
+    })
+    // 桌面坐标：key=instanceUid；仅保留仍存在于工作区实例中的坐标
+    const positions: Record<string, CardPosition> = {}
+    for (const e of elements) {
+      if (e.instanceUid && stored.positions?.[e.instanceUid]) {
+        positions[e.instanceUid] = stored.positions[e.instanceUid]
+      }
+    }
     return {
-      elements: stored.elements.map((e) => {
-        const official = INITIAL_ELEMENTS.find((def) => def.id === e.id)
-        return {
-          ...e,
-          instanceUid: e.instanceUid ?? uuid(),
-          id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
-          description: e.description ?? '',
-          categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
-          // 基础元素始终采用官方最新名称与图标（旧存档「风」→「气」+ 棕色粉末堆土）
-          name: official?.name ?? e.name,
-          svg: official?.svg ?? e.svg,
-        }
-      }),
+      elements,
       recipes: stored.recipes,
       // 基础类别（如天地万象）始终采用官方最新描述与图标，旧存档即时生效
       categories:
@@ -165,6 +190,7 @@ export function useWorkspace() {
         }
       }),
       craftHistory: stored.craftHistory,
+      positions,
     }
   }, [])
 
@@ -175,27 +201,29 @@ export function useWorkspace() {
   const [unlockedElements, setUnlockedElements] = useState<Element[]>(initial.unlockedElements)
   /** 合成触发流水（最近 50 条） */
   const [craftHistory, setCraftHistory] = useState<CraftHistoryEntry[]>(initial.craftHistory)
+  /** 桌面卡片坐标（key=instanceUid，单位 px） */
+  const [positions, setPositions] = useState<Record<string, CardPosition>>(initial.positions)
 
   // 正在合成中（防止重复拖拽）
   const [isCrafting, setIsCrafting] = useState(false)
 
   // 引用，用于异步回调中读取最新状态
-  const stateRef = useRef<StateRef>({ elements, recipes, categories, unlockedElements, craftHistory: [] })
+  const stateRef = useRef<StateRef>({ elements, recipes, categories, unlockedElements, craftHistory: [], positions })
   useEffect(() => {
-    stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory }
-  }, [elements, recipes, categories, unlockedElements, craftHistory])
+    stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory, positions }
+  }, [elements, recipes, categories, unlockedElements, craftHistory, positions])
 
-  // 自动持久化到 localStorage（元素 + 配方 + 类别 + 图鉴 + 合成历史）
+  // 自动持久化到 localStorage（元素 + 配方 + 类别 + 图鉴 + 合成历史 + 桌面坐标）
   useEffect(() => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ elements, recipes, categories, unlockedElements, craftHistory }),
+        JSON.stringify({ elements, recipes, categories, unlockedElements, craftHistory, positions }),
       )
     } catch {
       // ignore quota / privacy errors
     }
-  }, [elements, recipes, categories, unlockedElements, craftHistory])
+  }, [elements, recipes, categories, unlockedElements, craftHistory, positions])
 
   /** 查找本地配方（双向匹配） */
   const findLocalRecipe = useCallback(
@@ -254,6 +282,7 @@ export function useWorkspace() {
    */
   const resetWorkspace = useCallback(() => {
     setElements(INITIAL_WORKSPACE.elements.map((e) => ({ ...e, instanceUid: uuid() })))
+    setPositions({})
   }, [])
 
   /**
@@ -272,6 +301,7 @@ export function useWorkspace() {
     setCategories(INITIAL_WORKSPACE.categories)
     setUnlockedElements(INITIAL_WORKSPACE.elements)
     setCraftHistory([])
+    setPositions({})
   }, [])
 
   /** 向合成历史追加一条记录（无数量上限，前端分页展示） */
@@ -758,6 +788,7 @@ export function useWorkspace() {
         categories: 'categories.json',
         unlockedElements: 'unlockedElements.json',
         craftHistory: 'craftHistory.json',
+        positions: 'positions.json',
       },
     }
     const zip = new JSZip()
@@ -767,6 +798,7 @@ export function useWorkspace() {
     zip.file('categories.json', JSON.stringify(stateRef.current.categories, null, 2))
     zip.file('unlockedElements.json', JSON.stringify(stateRef.current.unlockedElements, null, 2))
     zip.file('craftHistory.json', JSON.stringify(stateRef.current.craftHistory, null, 2))
+    zip.file('positions.json', JSON.stringify(stateRef.current.positions ?? {}, null, 2))
     return await zip.generateAsync({ type: 'blob' })
   }, [])
 
@@ -807,15 +839,17 @@ export function useWorkspace() {
         let data: Workspace & {
           unlockedElements?: Element[]
           craftHistory?: CraftHistoryEntry[]
+          positions?: Record<string, CardPosition>
         } | null = null
 
         if (manifest.formatVersion === 2) {
-          const [elements, recipes, categories, unlockedElements, craftHistory] = await Promise.all([
+          const [elements, recipes, categories, unlockedElements, craftHistory, positions] = await Promise.all([
             readJson<Element[]>(nameOf('elements', 'elements.json')),
             readJson<Recipe[]>(nameOf('recipes', 'recipes.json')),
             readJson<ElementCategory[]>(nameOf('categories', 'categories.json')),
             readJson<Element[]>(nameOf('unlockedElements', 'unlockedElements.json')),
             readJson<CraftHistoryEntry[]>(nameOf('craftHistory', 'craftHistory.json')),
+            readJson<Record<string, CardPosition>>(nameOf('positions', 'positions.json')),
           ])
           if (Array.isArray(elements) && Array.isArray(recipes)) {
             data = {
@@ -824,6 +858,7 @@ export function useWorkspace() {
               categories: categories ?? [],
               unlockedElements: unlockedElements ?? undefined,
               craftHistory: craftHistory ?? undefined,
+              positions: positions ?? undefined,
             }
           }
         } else {
@@ -831,6 +866,7 @@ export function useWorkspace() {
           const legacy = JSON.parse(await manifestFile.async('text')) as Workspace & {
             unlockedElements?: Element[]
             craftHistory?: CraftHistoryEntry[]
+            positions?: Record<string, CardPosition>
           }
           if (Array.isArray(legacy.elements) && Array.isArray(legacy.recipes)) {
             data = legacy
@@ -868,6 +904,17 @@ export function useWorkspace() {
             isForeign: e.isForeign,
             instanceUid: e.instanceUid ?? uuid(),
           }))
+
+        // 桌面坐标：key=instanceUid；仅保留与导入实例匹配的合法坐标（无坐标的卡片将由工作区自动摆位）
+        const importedUids = new Set(importedElements.map((e) => e.instanceUid).filter((u): u is string => !!u))
+        const importedPositions: Record<string, CardPosition> = {}
+        if (data.positions && typeof data.positions === 'object') {
+          for (const [key, value] of Object.entries(data.positions)) {
+            if (importedUids.has(key) && value && Number.isFinite(value.x) && Number.isFinite(value.y)) {
+              importedPositions[key] = { x: value.x, y: value.y }
+            }
+          }
+        }
 
         // 已解锁元素库（缺省从导入元素推导）
         const importedUnlocked: Element[] =
@@ -948,6 +995,7 @@ export function useWorkspace() {
         setCategories(importedCategories)
         setUnlockedElements(importedUnlocked)
         setCraftHistory(importedHistory)
+        setPositions(importedPositions)
         return {
           ok: true,
           message: `成功导入 ${importedElements.length} 个元素、${importedRecipes.length} 条配方、${importedCategories.length} 个类别、${importedHistory.length} 条历史`,
@@ -995,6 +1043,8 @@ export function useWorkspace() {
     categories,
     unlockedElements,
     craftHistory,
+    positions,
+    setPositions,
     isCrafting,
     craft,
     exportWorkspace,

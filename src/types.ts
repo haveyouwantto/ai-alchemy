@@ -58,6 +58,12 @@ export interface CraftHistoryEntry {
   note?: string
 }
 
+/** 桌面卡片坐标（单位 px，相对工作区容器左上角） */
+export interface CardPosition {
+  x: number
+  y: number
+}
+
 /** 工作区完整状态快照 */
 export interface Workspace {
   elements: Element[]

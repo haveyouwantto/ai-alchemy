@@ -18,6 +18,8 @@ export default function App() {
     categories,
     unlockedElements,
     craftHistory,
+    positions,
+    setPositions,
     isCrafting,
     craft,
     exportWorkspace,
@@ -362,6 +364,8 @@ export default function App() {
         elements={elements}
         selectedIndex={selectedIndex}
         flashUids={flashUids}
+        positions={positions}
+        onPositionsChange={setPositions}
         onSelect={setSelectedIndex}
         onCraft={handleCraft}
         onDuplicate={handleDuplicate}

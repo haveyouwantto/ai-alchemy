@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -8,14 +8,17 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
-import type { Element } from '../types'
+import type { DragEndEvent, DragOverEvent, DragStartEvent, Modifier } from '@dnd-kit/core'
+import type { CardPosition, Element } from '../types'
 import { ElementCard } from './ElementCard'
 
 interface WorkspaceProps {
   elements: Element[]
   selectedIndex: number | null
   flashUids: Set<string>
+  /** 桌面卡片坐标（key=instanceUid，单位 px，相对工作区容器左上角） */
+  positions: Record<string, CardPosition>
+  onPositionsChange: (updater: React.SetStateAction<Record<string, CardPosition>>) => void
   onSelect: (index: number) => void
   onCraft: (a: Element, b: Element) => void
   onDuplicate: (element: Element) => void
@@ -35,11 +38,19 @@ interface Pos {
   y: number
 }
 
-/** 卡片自身尺寸（含边框/边距的大致占位，用于初始摆位避免重叠） */
-const CARD_GUESS = { w: 110, h: 130 }
+/** 卡片尺寸 */
+interface Size {
+  w: number
+  h: number
+}
 
 /** 工作区留白（px） */
 const PADDING = 24
+
+/** 按卡片基础尺寸估算真实渲染尺寸（在 DOM 测量就绪前兜底用） */
+function estimateCardSize(size: number): Size {
+  return { w: Math.max(48, Math.round(size * 0.9 + 4)), h: Math.max(52, Math.round(size * 0.9 + 10)) }
+}
 
 /** 可拖拽且可放置的元素卡 */
 function DraggableCard({
@@ -102,6 +113,8 @@ export function Workspace({
   elements,
   selectedIndex,
   flashUids,
+  positions,
+  onPositionsChange,
   onSelect,
   onCraft,
   onDuplicate,
@@ -109,71 +122,143 @@ export function Workspace({
   onDeleteToTrash,
 }: WorkspaceProps) {
   const [dragOverId, setDragOverId] = useState<string | null>(null)
-  /** 元素位置（像素坐标，相对工作区容器左上角） */
-  const [positions, setPositions] = useState<Record<string, Pos>>({})
   const positionCounter = useRef(0)
   /** 最近一次合成时两张输入卡的中心位置（像素坐标），用于新元素围绕它生成 */
   const lastCraftCenter = useRef<Pos | null>(null)
   /** 工作区容器引用 */
   const containerRef = useRef<HTMLDivElement>(null)
+  /** 卡片外层节点（用于读取真实渲染尺寸；offsetWidth/offsetHeight 不受拖拽 transform 影响） */
+  const cardNodesRef = useRef(new Map<string, HTMLDivElement>())
+  /** 最新位置快照（供拖拽 modifier 同步读取，避免依赖 dnd-kit 的 rect 测量时序） */
+  const positionsRef = useRef(positions)
+  positionsRef.current = positions
 
-  // 响应式卡片尺寸
+  // 响应式卡片尺寸（移动端更小）
   const [cardSize, setCardSize] = useState(() =>
-    typeof window === 'undefined' ? 96 : window.innerWidth < 640 ? 68 : window.innerWidth < 1024 ? 88 : 104,
+    typeof window === 'undefined' ? 96 : window.innerWidth < 640 ? 60 : window.innerWidth < 1024 ? 88 : 104,
   )
+  const cardSizeRef = useRef(cardSize)
+  cardSizeRef.current = cardSize
   useEffect(() => {
     const onResize = () => {
       const w = window.innerWidth
-      setCardSize(w < 640 ? 68 : w < 1024 ? 88 : 104)
+      setCardSize(w < 640 ? 60 : w < 1024 ? 88 : 104)
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  /** 读取卡片真实渲染尺寸（px）；节点未就绪时返回 null */
+  const readCardSize = useCallback((key: string): Size | null => {
+    const node = cardNodesRef.current.get(key)
+    if (!node) return null
+    const w = node.offsetWidth
+    const h = node.offsetHeight
+    if (w <= 0 || h <= 0) return null
+    return { w, h }
+  }, [])
+
+  /** 取卡片尺寸：优先真实测量值，其次按当前卡片档位估算 */
+  const getCardSize = useCallback(
+    (key: string): Size => readCardSize(key) ?? estimateCardSize(cardSizeRef.current),
+    [readCardSize],
+  )
+
   /** 为新增实例分配位置（px，基于容器实际尺寸）：首次出现时围绕最近合成中心（若存在）散布，否则随机 */
   useEffect(() => {
-    setPositions((prev) => {
+    onPositionsChange((prev) => {
       const rect = containerRef.current?.getBoundingClientRect()
       const cw = rect?.width ?? window.innerWidth
       const ch = rect?.height ?? window.innerHeight
       const minX = PADDING
       const minY = PADDING
-      const maxX = Math.max(minX + 1, cw - CARD_GUESS.w - PADDING)
-      const maxY = Math.max(minY + 1, ch - CARD_GUESS.h - PADDING)
 
       const next = { ...prev }
       let changed = false
       elements.forEach((el, index) => {
         const key = uidKey(el, index)
-        if (!(key in next)) {
-          positionCounter.current += 1
-          const seed = positionCounter.current
-          let x: number
-          let y: number
-          const center = lastCraftCenter.current
-          if (center) {
-            // 围绕中心散布（扇形，避免重叠）
-            const angle = (seed * 137.5 * Math.PI) / 180
-            const radius = 50 + (seed % 5) * 30
-            x = Math.min(maxX, Math.max(minX, center.x + Math.cos(angle) * radius))
-            y = Math.min(maxY, Math.max(minY, center.y + Math.sin(angle) * radius))
-          } else {
-            const cols = Math.max(1, Math.floor(cw / 150))
-            const rows = Math.max(1, Math.floor(ch / 170))
-            const col = seed % cols
-            const row = Math.floor(seed / cols) % rows
-            x = minX + col * 150 + ((seed * 37) % 40)
-            y = minY + row * 170 + ((seed * 53) % 40)
-            x = Math.min(maxX, x)
-            y = Math.min(maxY, y)
-          }
-          next[key] = { x, y }
-          changed = true
+        if (key in next) return
+        const size = getCardSize(key)
+        const maxX = Math.max(minX + 1, cw - size.w - PADDING)
+        const maxY = Math.max(minY + 1, ch - size.h - PADDING)
+        const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+        positionCounter.current += 1
+        const seed = positionCounter.current
+        let x: number
+        let y: number
+        const center = lastCraftCenter.current
+        if (center) {
+          // 围绕中心散布（扇形，避免重叠）
+          const angle = (seed * 137.5 * Math.PI) / 180
+          const radius = 50 + (seed % 5) * 30
+          x = clamp(center.x + Math.cos(angle) * radius, minX, maxX)
+          y = clamp(center.y + Math.sin(angle) * radius, minY, maxY)
+        } else {
+          // 网格排布（步长随卡片尺寸缩放）
+          const colStep = Math.max(40, size.w + 36)
+          const rowStep = Math.max(48, size.h + 42)
+          const cols = Math.max(1, Math.floor(cw / colStep))
+          const rows = Math.max(1, Math.floor(ch / rowStep))
+          const col = seed % cols
+          const row = Math.floor(seed / cols) % rows
+          x = clamp(minX + col * colStep + ((seed * 37) % 40), minX, maxX)
+          y = clamp(minY + row * rowStep + ((seed * 53) % 40), minY, maxY)
         }
+        next[key] = { x, y }
+        changed = true
       })
       return changed ? next : prev
     })
-  }, [elements])
+  }, [elements, getCardSize, onPositionsChange])
+
+  /** 元素被删除/合成消耗后，清理不再存在的坐标记录（防止旧 key 残留） */
+  useEffect(() => {
+    onPositionsChange((prev) => {
+      const valid = new Set(elements.map((el, i) => uidKey(el, i)))
+      const stale = Object.keys(prev).filter((k) => !valid.has(k))
+      if (stale.length === 0) return prev
+      const next = { ...prev }
+      for (const k of stale) delete next[k]
+      return next
+    })
+  }, [elements, onPositionsChange])
+
+  /** 加载时与窗口尺寸变化时，把超出工作区范围的卡片拉回可视区域 */
+  useLayoutEffect(() => {
+    const clampAll = () => {
+      onPositionsChange((prev) => {
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return prev
+        let changed = false
+        const next = { ...prev }
+        for (const [key, pos] of Object.entries(next)) {
+          const size = getCardSize(key)
+          const maxX = Math.max(PADDING, rect.width - size.w - PADDING)
+          const maxY = Math.max(PADDING, rect.height - size.h - PADDING)
+          const nx = Math.min(maxX, Math.max(PADDING, pos.x))
+          const ny = Math.min(maxY, Math.max(PADDING, pos.y))
+          if (nx !== pos.x || ny !== pos.y) {
+            next[key] = { x: nx, y: ny }
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }
+    // 挂载时同步拉回一次（布局阶段执行，避免首帧闪出屏幕）
+    clampAll()
+    // 窗口尺寸变化时（rAF 节流）再次拉回
+    let resizeRaf = 0
+    const onResize = () => {
+      cancelAnimationFrame(resizeRaf)
+      resizeRaf = requestAnimationFrame(clampAll)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      cancelAnimationFrame(resizeRaf)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [getCardSize, onPositionsChange])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -183,6 +268,34 @@ export function Workspace({
 
   const activeKeyRef = useRef<string | null>(null)
   const activeStartPos = useRef<Pos | null>(null)
+
+  /**
+   * 拖拽过程中就把卡片限制在工作区范围内（按真实尺寸 + 留白），
+   * 而不是松手时才钳制 —— 消除靠近右/下边缘时「回弹」的屏障感。
+   */
+  const clampToWorkspace = useMemo<Modifier>(
+    () =>
+      ({ transform, active }) => {
+        const container = containerRef.current
+        if (!container || !active) return transform
+        const key = String(active.id)
+        const pos = positionsRef.current[key]
+        if (!pos) return transform
+        const size = readCardSize(key) ?? estimateCardSize(cardSizeRef.current)
+        const cRect = container.getBoundingClientRect()
+        const minX = PADDING - pos.x
+        const maxX = cRect.width - size.w - PADDING - pos.x
+        const minY = PADDING - pos.y
+        const maxY = cRect.height - size.h - PADDING - pos.y
+        return {
+          x: Math.min(maxX, Math.max(minX, transform.x)),
+          y: Math.min(maxY, Math.max(minY, transform.y)),
+          scaleX: transform.scaleX,
+          scaleY: transform.scaleY,
+        }
+      },
+    [readCardSize],
+  )
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -216,14 +329,14 @@ export function Workspace({
       const aIndex = elements.findIndex((el, i) => uidKey(el, i) === activeKey)
       if (aIndex < 0) return
       // 清理该实例的位置记录
-      setPositions((prev) => {
+      onPositionsChange((prev) => {
         const next = { ...prev }
         delete next[activeKey]
         return next
       })
       onDeleteToTrash(aIndex)
     },
-    [elements, onDeleteToTrash],
+    [elements, onDeleteToTrash, onPositionsChange],
   )
 
   const handleDragEnd = useCallback(
@@ -258,30 +371,28 @@ export function Workspace({
       if (targetKey && targetKey !== activeKey) {
         const bIndex = elements.findIndex((el, i) => uidKey(el, i) === targetKey)
         if (bIndex >= 0) {
-          setPositions((currentPositions) => {
-            const pa = currentPositions[activeKey]
-            const pb = currentPositions[targetKey]
-            if (pa && pb) {
-              lastCraftCenter.current = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }
-            }
-            return currentPositions
-          })
+          const pa = positions[activeKey]
+          const pb = positions[targetKey]
+          if (pa && pb) {
+            lastCraftCenter.current = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }
+          }
           onCraft(elements[aIndex], elements[bIndex])
         }
         activeStartPos.current = null
         return
       }
 
-      // 拖到空白处（或原地）→ 移动卡片位置（px：直接累加位移）
+      // 拖到空白处（或原地）→ 移动卡片位置（px：直接累加位移，并按真实尺寸钳制在容器内）
       if (event.delta) {
         const dx = event.delta.x
         const dy = event.delta.y
-        setPositions((prev) => {
+        onPositionsChange((prev) => {
           const cur = prev[activeKey]
           if (!cur) return prev
+          const size = getCardSize(activeKey)
           const rect = containerRef.current?.getBoundingClientRect()
-          const maxX = rect ? rect.width - CARD_GUESS.w - PADDING : cur.x + dx
-          const maxY = rect ? rect.height - CARD_GUESS.h - PADDING : cur.y + dy
+          const maxX = rect ? Math.max(PADDING, rect.width - size.w - PADDING) : cur.x + dx
+          const maxY = rect ? Math.max(PADDING, rect.height - size.h - PADDING) : cur.y + dy
           const next = {
             ...prev,
             [activeKey]: {
@@ -296,7 +407,7 @@ export function Workspace({
       }
       activeStartPos.current = null
     },
-    [elements, onCraft, onSelect, handleDeleteToTrash],
+    [elements, onCraft, onSelect, handleDeleteToTrash, positions, getCardSize, onPositionsChange],
   )
 
   const handleDragCancel = useCallback(() => {
@@ -315,6 +426,7 @@ export function Workspace({
     <div ref={containerRef} className="relative flex-1 overflow-hidden">
       <DndContext
         sensors={sensors}
+        modifiers={[clampToWorkspace]}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -330,6 +442,10 @@ export function Workspace({
           return (
             <div
               key={key}
+              ref={(node) => {
+                if (node) cardNodesRef.current.set(key, node)
+                else cardNodesRef.current.delete(key)
+              }}
               className="absolute"
               style={{
                 left: pos.x,
