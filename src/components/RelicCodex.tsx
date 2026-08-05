@@ -98,7 +98,7 @@ export function RelicCodex({ relics, counts, recipes, elements, open, onClose, o
                           ×{count}
                         </span>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-amber-900/80">{r.description}</p>
+                      <p className="mt-1 line-clamp-2 font-serif text-xs leading-relaxed text-amber-900/80">{r.description}</p>
                       <button
                         onClick={() => onDeploy(relicId)}
                         disabled={count <= 0}

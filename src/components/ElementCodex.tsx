@@ -158,7 +158,7 @@ export function ElementDetailModal({
           <div className="flex items-center gap-4 pb-3">
             <CodexIcon svg={viewElement.svg} size={72} />
             <div className="min-w-0">
-              <h2 className="text-2xl font-bold text-amber-950">{viewElement.name}</h2>
+              <h2 className="font-serif text-2xl font-bold text-amber-950">{viewElement.name}</h2>
               <p className="font-mono text-xs text-amber-700">{viewElement.id}</p>
               {viewElement.discoveredAt !== undefined && viewElement.discoveredAt > 0 && (
                 <p className="mt-0.5 text-[11px] text-amber-700/80">
@@ -175,7 +175,7 @@ export function ElementDetailModal({
           </div>
 
           {/* 描述 */}
-          <p className="border-y border-amber-800/30 py-3 text-sm leading-relaxed text-amber-900/90">
+          <p className="border-y border-amber-800/30 py-3 font-serif text-sm leading-relaxed text-amber-900/90">
             {viewElement.description || '暂无描述，此元素由炼金术师偶然所得…'}
           </p>
 
@@ -443,7 +443,7 @@ export function ElementCodex({
                   <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5 sm:items-start">
                     <button
                       onClick={() => setDetailElement(el)}
-                      className="line-clamp-2 break-words text-center text-sm font-semibold leading-tight text-amber-950 hover:text-amber-700 sm:text-left"
+                      className="line-clamp-2 break-words text-center font-serif text-sm font-semibold leading-tight text-amber-950 hover:text-amber-700 sm:text-left"
                       title={`查看 ${el.name} 详情`}
                     >
                       {el.name}
