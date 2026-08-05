@@ -62,10 +62,10 @@ export interface Achievement {
   icon: string
   /** 秘宝奖励：relicId → 数量 */
   reward: Record<string, number>
-  /** 数量成就：按已发现元素/类别数量判定 */
-  metric?: 'elements' | 'categories'
+  /** 数量成就：按已发现元素/类别/配方数量判定 */
+  metric?: 'elements' | 'categories' | 'recipes'
   targetCount?: number
-  /** 目标成就：需发现指定元素 id（全部发现才算完成） */
+  /** 目标成就：发现任一指定元素 id 即达成（同义词可并列多个 id） */
   targetIds?: string[]
 }
 

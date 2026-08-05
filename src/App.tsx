@@ -8,7 +8,9 @@ import { ElementCodex } from './components/ElementCodex'
 import { RelicCodex } from './components/RelicCodex'
 import { TransmuteModal } from './components/TransmuteModal'
 import { RelicConfirmModal } from './components/RelicConfirmModal'
+import { NewElementReveal, type RevealItem } from './components/NewElementReveal'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { HelpModal } from './components/HelpModal'
 import { Tutorial } from './components/Tutorial'
 
 import { HistoryPanel } from './components/HistoryPanel'
@@ -48,6 +50,13 @@ export default function App() {
         pushToast(`🏆 成就达成：${a.name}`, undefined, 'success', reward ? `奖励秘宝：${reward}` : undefined)
       }
     },
+    onRelicAward: (awards) => {
+      for (const a of awards) {
+        const t = RELIC_TEMPLATES.find((r) => r.relicId === a.relicId)
+        if (!t) continue
+        pushToast(`🏺 秘宝降临：${t.name} ×${a.count}`, [{ name: t.name, svg: t.svg }], 'success')
+      }
+    },
   })
   const {
     elements,
@@ -84,6 +93,7 @@ export default function App() {
   const [showMap, setShowMap] = useState(false)
   const [showAchievements, setShowAchievements] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   /** 赤化点化：待提交说服文本（relic=赤化，element=被点化元素） */
   const [pendingTransmute, setPendingTransmute] = useState<{ relic: Element; element: Element } | null>(null)
   /** 秘宝使用二次确认（含重复使用警告） */
@@ -94,6 +104,8 @@ export default function App() {
   } | null>(null)
   /** 地图加载失败后的重试次数（作为错误边界 key，重置子树） */
   const [mapRetry, setMapRetry] = useState(0)
+  /** 新元素发现动画队列（依次播放：中央金光 → 飞向新卡） */
+  const [revealQueue, setRevealQueue] = useState<RevealItem[]>([])
   // 世界地图依赖较大的力导向渲染库，懒加载避免拖慢首屏；
   // 用重试次数重建 lazy 组件，加载失败后「重试」能真正重新请求 chunk
   const WorldMap = useMemo(
@@ -180,17 +192,13 @@ export default function App() {
           : outcome.known.join('、') || '？'
       }`
       pushToast(`⚗️ ${formulaTitle}`, outcomeElements, 'success')
-      // AI 创造新元素：弹出「贤者低语」toast，展示新元素图标与说明
+      // AI 创造新元素：屏幕中央放大闪金光 → 缩小飞向工作区的新卡片
       if (outcome.type === 'ai' && outcome.newElements.length > 0) {
-        for (const el of outcome.newElements) {
-          pushToast(
-            `✨ 新元素「${el.name}」真身显现`,
-            [{ name: el.name, svg: el.svg }],
-            'success',
-            el.description || '贤者尚未留下笔墨……',
-            true,
-          )
-        }
+        const items: RevealItem[] = outcome.newElements.map((el) => {
+          const inst = outcome.added.find((a) => a.id === el.id)
+          return { id: el.id, name: el.name, svg: el.svg, instanceUid: inst?.instanceUid }
+        })
+        setRevealQueue((q) => [...q, ...items])
       }
       // 秘宝奖励：合成出足够多的新元素后获得黑化
       if (outcome.type === 'ai' && outcome.relicReward && outcome.relicReward > 0) {
@@ -613,6 +621,9 @@ export default function App() {
             >
               ⚙️
             </ToolButton>
+            <ToolButton onClick={() => setShowHelp(true)} title="游戏说明" label="说明">
+              ❓
+            </ToolButton>
             </div>
           </div>
         </div>
@@ -692,10 +703,18 @@ export default function App() {
         completed={achievements}
         unlockedCount={unlockedElements.length}
         categoryCount={categories.length}
+        recipeCount={recipes.length}
         unlockedIds={unlockedElements.map((e) => e.id)}
+        unlockedElements={unlockedElements}
+        recipes={recipes}
+        elements={[...unlockedElements, ...RELIC_TEMPLATES]}
+        categories={categories}
+        onAdd={handleAddFromCodex}
+        onDeployRelic={handleDeployRelic}
         open={showAchievements}
         onClose={() => setShowAchievements(false)}
       />
+      <HelpModal open={showHelp} onClose={() => setShowHelp(false)} />
       {showMap && (
         <ErrorBoundary
           key={mapRetry}
@@ -801,6 +820,15 @@ export default function App() {
         inputs={craftInputs}
         streamText={streamText}
       />
+
+      {/* 新元素发现动画：中央金光 → 飞向新卡 */}
+      {revealQueue.length > 0 && (
+        <NewElementReveal
+          key={revealQueue[0].instanceUid ?? revealQueue[0].id}
+          item={revealQueue[0]}
+          onFinished={() => setRevealQueue((q) => q.slice(1))}
+        />
+      )}
 
       {/* Toast 通知 */}
       <ToastContainer toasts={toasts} />

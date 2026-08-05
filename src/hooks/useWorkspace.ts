@@ -237,6 +237,16 @@ function loadStoredWorkspace(): StoredWorkspace {
             for (const [key, value] of Object.entries(INITIAL_RELIC_COUNTS)) {
               if (!(key in relics)) relics[key] = value
             }
+            // 老存档补发：按当前已解锁数量，把白化/黄化/赤化至少补足到应得数量
+            // （避免旧存档库存只停在初始值、解锁奖励被吞掉）
+            const topUpUnlockRelic = (interval: number, relicId: string) => {
+              const initial = INITIAL_RELIC_COUNTS[relicId] ?? 0
+              const expected = initial + Math.floor(unlockedElements.length / interval)
+              if ((relics[relicId] ?? initial) < expected) relics[relicId] = expected
+            }
+            topUpUnlockRelic(RELIC_ALBEDO_UNLOCK_INTERVAL, 'albedo')
+            topUpUnlockRelic(RELIC_CITRINITAS_UNLOCK_INTERVAL, 'citrinitas')
+            topUpUnlockRelic(RELIC_RUBEDO_UNLOCK_INTERVAL, 'rubedo')
             return relics
           })(),
           newElementCount:
@@ -279,8 +289,11 @@ function normalizeId(input: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
-export function useWorkspace(options?: { onAchievementComplete?: (list: Achievement[]) => void }) {
-  const { onAchievementComplete } = options ?? {}
+export function useWorkspace(options?: {
+  onAchievementComplete?: (list: Achievement[]) => void
+  onRelicAward?: (awards: Array<{ relicId: string; count: number }>) => void
+}) {
+  const { onAchievementComplete, onRelicAward } = options ?? {}
   // 初始数据：加载持久化存档并确保每个实例都有 instanceUid，旧元素补描述/类别
   const initial = useMemo(() => {
     const stored = loadStoredWorkspace()
@@ -551,7 +564,9 @@ export function useWorkspace(options?: { onAchievementComplete?: (list: Achievem
             ? unlocked.length >= (ach.targetCount ?? 0)
             : ach.metric === 'categories'
               ? categories.length >= (ach.targetCount ?? 0)
-              : (ach.targetIds ?? []).every((id) => unlocked.some((e) => e.id === id))
+              : ach.metric === 'recipes'
+                ? stateRef.current.recipes.length >= (ach.targetCount ?? 0)
+                : (ach.targetIds ?? []).some((id) => unlocked.some((e) => e.id === id))
         if (!complete) continue
         claimedRef.current.add(ach.id)
         newly.push(ach)
@@ -584,19 +599,22 @@ export function useWorkspace(options?: { onAchievementComplete?: (list: Achievem
     const fresh = items.filter((e) => !existing.has(e.id))
     if (fresh.length === 0) return
     const next = [...prev, ...fresh.map((e) => (e.discoveredAt ? e : { ...e, discoveredAt: Date.now() }))]
+    const awards: Array<{ relicId: string; count: number }> = []
     const awardRelic = (interval: number, relicId: string) => {
       const awarded = Math.floor(next.length / interval) - Math.floor(prev.length / interval)
       if (awarded > 0) {
         setRelics((r) => ({ ...r, [relicId]: (r[relicId] ?? 0) + awarded }))
+        awards.push({ relicId, count: awarded })
       }
     }
     awardRelic(RELIC_ALBEDO_UNLOCK_INTERVAL, 'albedo')
     awardRelic(RELIC_CITRINITAS_UNLOCK_INTERVAL, 'citrinitas')
     awardRelic(RELIC_RUBEDO_UNLOCK_INTERVAL, 'rubedo')
+    if (awards.length > 0) onRelicAward?.(awards)
     setUnlockedElements(next)
     // 合成/反应解锁后顺带检查成就（用最新的解锁列表，避免计数滞后）
     checkAchievements(next)
-  }, [checkAchievements])
+  }, [checkAchievements, onRelicAward])
 
   /** 将元素的使用频次 +delta */
   const bumpUseCount = useCallback((id: string, delta = 1) => {

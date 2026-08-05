@@ -52,6 +52,7 @@ function ElementCardInner({
     <div
       ref={ref}
       style={style}
+      data-instance-uid={element.instanceUid}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       {...(attributes ?? {})}

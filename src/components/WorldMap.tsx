@@ -436,13 +436,15 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
       ctx.stroke()
     }
 
-    // 名称
-    const fontSize = 11 / globalScale
-    ctx.font = `${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`
-    ctx.fillStyle = isSel ? '#92400e' : '#7a5b2e'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'top'
-    ctx.fillText(n.name ?? id, x, y + r + 2 / globalScale)
+    // 名称：缩放等级过小时不绘制，避免糊成一团
+    if (globalScale >= 0.55) {
+      const fontSize = 11 / globalScale
+      ctx.font = `${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`
+      ctx.fillStyle = isSel ? '#92400e' : '#7a5b2e'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(n.name ?? id, x, y + r + 2 / globalScale)
+    }
   }
 
   const nodePointerAreaPaint: NonNullable<

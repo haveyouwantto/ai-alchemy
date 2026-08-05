@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
-import type { Achievement } from '../types'
+import { useMemo, useState } from 'react'
+import type { Achievement, Element, ElementCategory, Recipe } from '../types'
 import { RELIC_TEMPLATES } from '../constants'
 import { sanitizeSVG } from '../utils'
+import { ElementDetailModal } from './ElementCodex'
 
 interface AchievementsModalProps {
   achievements: Achievement[]
@@ -9,8 +10,22 @@ interface AchievementsModalProps {
   completed: Record<string, number>
   unlockedCount: number
   categoryCount: number
+  /** 已掌握配方数（配方数量成就进度） */
+  recipeCount: number
   /** 已解锁元素 id 列表（用于目标成就进度） */
   unlockedIds: string[]
+  /** 已解锁元素（用于目标成就展示触发的元素小图标） */
+  unlockedElements: Element[]
+  /** 配方表（元素详情弹窗用） */
+  recipes: Recipe[]
+  /** 元素 + 秘宝模板（元素详情弹窗解析用） */
+  elements: Element[]
+  /** 类别表（元素详情弹窗用） */
+  categories: ElementCategory[]
+  /** 添加到桌面（元素详情弹窗用） */
+  onAdd: (el: Element) => void
+  /** 秘宝部署（奖励秘宝详情弹窗用，消耗库存） */
+  onDeployRelic?: (relicId: string) => void
   open: boolean
   onClose: () => void
 }
@@ -21,13 +36,17 @@ function formatDate(ts: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-const relicNameById = Object.fromEntries(RELIC_TEMPLATES.map((r) => [r.relicId, r.name]))
-
-/** 奖励文案：黑化×1、白化×1 … */
-function rewardText(reward: Record<string, number>): string {
-  return Object.entries(reward)
-    .map(([rid, n]) => `${relicNameById[rid] ?? rid}×${n}`)
-    .join('、')
+/** 小图标 + 名称胶囊（成就列表内展示触发元素 / 奖励） */
+function AchieveChip({ svg, text }: { svg: string; text: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-amber-700/40 bg-amber-100 px-1.5 py-0.5">
+      <span
+        className="svg-shell inline-flex h-4 w-4 shrink-0 items-center justify-center"
+        dangerouslySetInnerHTML={{ __html: sanitizeSVG(svg) }}
+      />
+      <span className="text-[11px] font-semibold text-amber-900">{text}</span>
+    </span>
+  )
 }
 
 export function AchievementsModal({
@@ -35,12 +54,31 @@ export function AchievementsModal({
   completed,
   unlockedCount,
   categoryCount,
+  recipeCount,
   unlockedIds,
+  unlockedElements,
+  recipes,
+  elements,
+  categories,
+  onAdd,
+  onDeployRelic,
   open,
   onClose,
 }: AchievementsModalProps) {
+  const [detailElement, setDetailElement] = useState<Element | null>(null)
   const doneCount = Object.keys(completed).length
   const unlockedSet = useMemo(() => new Set(unlockedIds), [unlockedIds])
+  // 排序：数量成就（元素→类别→配方，阈值升序）在前，目标成就随后
+  const sorted = useMemo(() => {
+    const metricOrder: Record<string, number> = { elements: 0, categories: 1, recipes: 2 }
+    return [...achievements].sort((a, b) => {
+      const ma = a.metric ? (metricOrder[a.metric] ?? 3) : 3
+      const mb = b.metric ? (metricOrder[b.metric] ?? 3) : 3
+      if (ma !== mb) return ma - mb
+      if (a.metric) return (a.targetCount ?? 0) - (b.targetCount ?? 0)
+      return a.id.localeCompare(b.id)
+    })
+  }, [achievements])
 
   if (!open) return null
 
@@ -63,14 +101,22 @@ export function AchievementsModal({
 
         <div className="alchemy-scroll flex-1 overflow-y-auto bg-[#f5e6c8] p-4">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {achievements.map((a) => {
+            {sorted.map((a) => {
               const ts = completed[a.id]
               const progress =
                 a.metric === 'elements'
                   ? `${Math.min(unlockedCount, a.targetCount ?? 0)}/${a.targetCount ?? 0}`
                   : a.metric === 'categories'
                     ? `${Math.min(categoryCount, a.targetCount ?? 0)}/${a.targetCount ?? 0}`
-                    : `${(a.targetIds ?? []).filter((id) => unlockedSet.has(id)).length}/${(a.targetIds ?? []).length}`
+                  : a.metric === 'recipes'
+                    ? `${Math.min(recipeCount, a.targetCount ?? 0)}/${a.targetCount ?? 0}`
+                    : (a.targetIds ?? []).some((id) => unlockedSet.has(id))
+                      ? '已发现'
+                      : '尚未发现'
+              const matched =
+                a.targetIds && a.targetIds.length > 0
+                  ? unlockedElements.filter((e) => a.targetIds!.includes(e.id))
+                  : []
               return (
                 <div
                   key={a.id}
@@ -99,7 +145,39 @@ export function AchievementsModal({
                     <p className="mt-1 text-[11px] font-semibold text-amber-800">
                       {ts ? '已完成' : `进度 ${progress}`}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-amber-700/80">奖励：{rewardText(a.reward)}</p>
+                    {matched.length > 0 && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <span className="text-[11px] font-semibold text-amber-700/80">触发元素：</span>
+                        {matched.map((el) => (
+                          <button
+                            key={el.id}
+                            type="button"
+                            onClick={() => setDetailElement(el)}
+                            title={`查看「${el.name}」详情`}
+                            className="rounded-full transition-transform hover:scale-105 active:scale-95"
+                          >
+                            <AchieveChip svg={el.svg} text={el.name} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      <span className="text-[11px] font-semibold text-amber-700/80">奖励：</span>
+                      {Object.entries(a.reward).map(([rid, n]) => {
+                        const t = RELIC_TEMPLATES.find((r) => r.relicId === rid)
+                        return t ? (
+                          <button
+                            key={rid}
+                            type="button"
+                            onClick={() => setDetailElement(t)}
+                            title={`查看「${t.name}」详情`}
+                            className="rounded-full transition-transform hover:scale-105 active:scale-95"
+                          >
+                            <AchieveChip svg={t.svg} text={`${t.name}×${n}`} />
+                          </button>
+                        ) : null
+                      })}
+                    </div>
                   </div>
                 </div>
               )
@@ -107,6 +185,20 @@ export function AchievementsModal({
           </div>
         </div>
       </div>
+
+      {/* 触发元素详情 */}
+      {detailElement && (
+        <ElementDetailModal
+          element={detailElement}
+          category={categories.find((c) => c.id === detailElement.categoryId)}
+          recipes={recipes}
+          elements={elements}
+          categories={categories}
+          onAdd={onAdd}
+          onDeployRelic={onDeployRelic}
+          onClose={() => setDetailElement(null)}
+        />
+      )}
     </div>
   )
 }
