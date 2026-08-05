@@ -10,6 +10,10 @@ interface ElementCodexProps {
   onClose: () => void
   /** 点击「+」添加到桌面 */
   onAdd: (element: Element) => void
+  /** 秘宝模板（配方中的秘宝输入解析用） */
+  relics?: Element[]
+  /** 秘宝部署：详情里对秘宝点「添加到桌面」时消耗库存 */
+  onDeployRelic?: (relicId: string) => void
 }
 
 /** 迷你元素图标 */
@@ -107,6 +111,7 @@ export function ElementDetailModal({
   onAdd,
   onClose,
   categories,
+  onDeployRelic,
 }: {
   element: Element
   category: ElementCategory | undefined
@@ -116,6 +121,8 @@ export function ElementDetailModal({
   onClose: () => void
   /** 类别表（可选）：提供后，跳转到其它元素时也能显示其类别 */
   categories?: ElementCategory[]
+  /** 秘宝部署（可选）：详情中的秘宝点「添加到桌面」时消耗库存 */
+  onDeployRelic?: (relicId: string) => void
 }) {
   const [viewElement, setViewElement] = useState(element)
   useEffect(() => setViewElement(element), [element])
@@ -213,7 +220,11 @@ export function ElementDetailModal({
         <div className="flex gap-2 border-t border-amber-800/30 bg-[#f5e6c8] px-4 py-3">
           <button
             onClick={() => {
-              onAdd(viewElement)
+              if (viewElement.relicId && onDeployRelic) {
+                onDeployRelic(viewElement.relicId)
+              } else {
+                onAdd(viewElement)
+              }
               onClose()
             }}
             className="flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-2 font-bold text-amber-950 transition-all hover:brightness-110 active:scale-95"
@@ -232,7 +243,16 @@ export function ElementDetailModal({
   )
 }
 
-export function ElementCodex({ elements, recipes, categories, open, onClose, onAdd }: ElementCodexProps) {
+export function ElementCodex({
+  elements,
+  recipes,
+  categories,
+  open,
+  onClose,
+  onAdd,
+  relics,
+  onDeployRelic,
+}: ElementCodexProps) {
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
@@ -247,6 +267,12 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
     }
     return Array.from(map.values())
   }, [elements])
+
+  // 配方解析列表：已解锁元素 + 秘宝模板（秘宝会作为配方输入出现）
+  const recipeElements = useMemo(
+    () => [...uniqueElements, ...(relics ?? [])],
+    [uniqueElements, relics],
+  )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -453,9 +479,10 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
           element={detailElement}
           category={detailCategory}
           recipes={recipes}
-          elements={uniqueElements}
+          elements={recipeElements}
           categories={categories}
           onAdd={onAdd}
+          onDeployRelic={onDeployRelic}
           onClose={() => setDetailElement(null)}
         />
       )}

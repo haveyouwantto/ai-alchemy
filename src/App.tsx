@@ -560,6 +560,8 @@ export default function App() {
         open={showCodex}
         onClose={() => setShowCodex(false)}
         onAdd={handleAddFromCodex}
+        relics={RELIC_TEMPLATES}
+        onDeployRelic={handleDeployRelic}
       />
       <HistoryPanel
         history={craftHistory}
