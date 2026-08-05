@@ -60,7 +60,7 @@ function ElementCardInner({
       className={[
         'relative flex flex-col items-center justify-center rounded-2xl border-2 transition-all duration-150',
         'element-card',
-        // 半透明暖色底（毛玻璃模糊由 .element-card 的媒体查询控制，触屏设备禁用避免 iOS 切后台冻结）
+        // 半透明暖色底（不做 backdrop-filter 模糊，保证大量卡片时性能）
         'border-amber-800/40 bg-amber-100/[0.07] shadow-lg shadow-black/40',
         'ring-1 ring-inset ring-amber-200/10',
         selected
