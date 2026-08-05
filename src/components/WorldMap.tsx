@@ -595,7 +595,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
 
         {/* 底部提示 */}
         <div className="border-t border-amber-900/30 bg-[#7a4a20]/95 px-4 py-2 text-xs text-amber-100/80">
-          实线 = 最大生成树（按重要性加权、径向无交叉布局）· 点击元素：绿虚线 = 参与合成，橙虚线 = 获得方式 · 滚轮缩放 · 拖动平移
+          实线 = 直接关联 · 点击元素：绿虚线 = 参与合成，橙虚线 = 获得方式 · 滚轮缩放 · 拖动平移
         </div>
       </div>
 
