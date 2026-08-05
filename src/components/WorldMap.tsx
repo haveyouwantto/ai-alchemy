@@ -200,17 +200,18 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     return set
   }, [selected, links])
 
-  // 选中元素的全部关系（含不在最小生成树里的边，用于虚线展示）
-  const relatedIds = useMemo(() => {
-    const set = new Set<string>()
-    if (!selected) return set
+  // 选中元素的关系按方向分组：参与合成（选中 → 产物）与获得方式（原料 → 选中）
+  const relatedByDir = useMemo(() => {
+    const outs = new Set<string>()
+    const ins = new Set<string>()
+    if (!selected) return { outs, ins }
     for (const l of graphData.fullLinks) {
       const s = String(l.source)
       const t = String(l.target)
-      if (s === selected) set.add(t)
-      if (t === selected) set.add(s)
+      if (s === selected) outs.add(t)
+      if (t === selected) ins.add(s)
     }
-    return set
+    return { outs, ins }
   }, [selected, graphData.fullLinks])
 
   const drawNode: NonNullable<ForceGraphProps<Element, { source: string; target: string }>['nodeCanvasObject']> = (
@@ -333,23 +334,29 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
               onNodeClick={(node) => setSelected(node.id === selected ? null : String(node.id))}
               onBackgroundClick={() => setSelected(null)}
               onRenderFramePost={(ctx, globalScale) => {
-                // 选中元素：把与它相关的完整关系用虚线叠画（纯视觉，不影响力）。
+                // 选中元素：参与合成（绿虚线）+ 获得方式（橙虚线）叠画，纯视觉不影响力。
                 // ctx 自带 DPR + 缩放平移变换，节点/连线都按图坐标绘制，这里同样沿用。
                 if (!selected) return
                 const sel = nodes.find((n) => String(n.id) === selected)
                 if (!sel || sel.x == null || sel.y == null) return
+                const sx = sel.x
+                const sy = sel.y
                 ctx.save()
                 ctx.setLineDash([6 / globalScale, 4 / globalScale])
-                ctx.strokeStyle = 'rgba(217,119,6,0.75)'
                 ctx.lineWidth = 1.5 / globalScale
-                for (const rid of relatedIds) {
-                  const n = nodes.find((nd) => String(nd.id) === rid)
-                  if (!n || n.x == null || n.y == null || n === sel) continue
-                  ctx.beginPath()
-                  ctx.moveTo(sel.x, sel.y)
-                  ctx.lineTo(n.x, n.y)
-                  ctx.stroke()
+                const drawDashes = (ids: Set<string>, color: string) => {
+                  ctx.strokeStyle = color
+                  for (const rid of ids) {
+                    const n = nodes.find((nd) => String(nd.id) === rid)
+                    if (!n || n.x == null || n.y == null || n === sel) continue
+                    ctx.beginPath()
+                    ctx.moveTo(sx, sy)
+                    ctx.lineTo(n.x, n.y)
+                    ctx.stroke()
+                  }
                 }
+                drawDashes(relatedByDir.outs, 'rgba(16,185,129,0.85)') // 参与合成：绿
+                drawDashes(relatedByDir.ins, 'rgba(217,119,6,0.75)') // 获得方式：橙
                 ctx.restore()
               }}
               linkColor={linkColor as never}
@@ -405,7 +412,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
 
         {/* 底部提示 */}
         <div className="border-t border-amber-900/30 bg-[#7a4a20]/95 px-4 py-2 text-xs text-amber-100/80">
-          实线 = 最小生成树骨架 · 点击元素后虚线 = 其全部关系（不影响布局）· 滚轮缩放 · 拖动平移
+          实线 = 最小生成树骨架 · 点击元素：绿虚线 = 参与合成，橙虚线 = 获得方式（不影响布局）· 滚轮缩放 · 拖动平移
         </div>
       </div>
 
