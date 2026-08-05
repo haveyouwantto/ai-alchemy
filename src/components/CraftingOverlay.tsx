@@ -80,7 +80,7 @@ export function CraftingOverlay({ show, message, inputs = [], streamText = '' }:
         </div>
 
         {/* 状态文字 */}
-        <p className="text-center font-medium text-amber-200">{message || '贤者之石充能中...'}</p>
+        <p className="text-center font-medium text-amber-200">{message || '正在搅拌中...'}</p>
 
         {/* 进度条 */}
         <div className="h-2 w-full overflow-hidden rounded-full border border-amber-900/50 bg-[#1d1007]">

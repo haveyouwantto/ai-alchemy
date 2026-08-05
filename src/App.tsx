@@ -108,7 +108,7 @@ export default function App() {
         { name: elementB.name, svg: elementB.svg },
       ])
       setStreamText('')
-      setCraftMessage('贤者之石充能中...')
+      setCraftMessage('正在搅拌中...')
       // 预闪烁两张卡
       const flashKeys = new Set<string>()
       if (elementA.instanceUid) flashKeys.add(elementA.instanceUid)

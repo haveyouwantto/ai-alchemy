@@ -676,7 +676,7 @@ export function useWorkspace() {
             })()
           : buildMessages(inputA, inputB)
         onMessage(isDecompose ? `${relicInput!.name}${relicVerb}中...` : '正在解析元素...')
-        onMessage(isDecompose ? `${relicVerb}进行中...` : '贤者之石充能中...')
+        onMessage(isDecompose ? `${relicVerb}进行中...` : '正在搅拌中...')
 
         // 多轮工具调用中累积的状态
         const newElements: Element[] = []
@@ -696,7 +696,7 @@ export function useWorkspace() {
             (text) => {
               craftNote += text
               onStream?.(text)
-              onMessage(isDecompose ? `${relicVerb}进行中...` : '贤者之石充能中...')
+              onMessage(isDecompose ? `${relicVerb}进行中...` : '正在搅拌中...')
             },
             (text) => onReasoning?.(text),
           )
