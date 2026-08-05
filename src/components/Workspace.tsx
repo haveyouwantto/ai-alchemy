@@ -126,7 +126,7 @@ export function Workspace({
 }: WorkspaceProps) {
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const positionCounter = useRef(0)
-  /** 最近一次合成时两张输入卡的中心位置（像素坐标），用于新元素围绕它生成 */
+  /** 最近一次合成/复制时的生成中心（像素坐标）：合成取两张原料卡中点，复制取原卡位置，新卡围绕它生成 */
   const lastCraftCenter = useRef<Pos | null>(null)
   /** 工作区容器引用 */
   const containerRef = useRef<HTMLDivElement>(null)
@@ -193,9 +193,9 @@ export function Workspace({
         let y: number
         const center = lastCraftCenter.current
         if (center) {
-          // 围绕中心散布（扇形，避免重叠）
+          // 围绕中心小范围散布（扇形，避免重叠，但仍紧邻原料/原卡）
           const angle = (seed * 137.5 * Math.PI) / 180
-          const radius = 50 + (seed % 5) * 30
+          const radius = 26 + (seed % 3) * 14
           x = clamp(center.x + Math.cos(angle) * radius, minX, maxX)
           y = clamp(center.y + Math.sin(angle) * radius, minY, maxY)
         } else {
@@ -430,11 +430,15 @@ export function Workspace({
       if (targetKey && targetKey !== activeKey) {
         const bIndex = elements.findIndex((el, i) => uidKey(el, i) === targetKey)
         if (bIndex >= 0) {
+          // 新产物以两张原料卡的中点为中心生成（任一卡缺位置时用另一张）
           const pa = positions[activeKey]
           const pb = positions[targetKey]
-          if (pa && pb) {
-            lastCraftCenter.current = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }
-          }
+          const anchor = pa ?? pb
+          lastCraftCenter.current = pa && pb
+            ? { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }
+            : anchor
+              ? { ...anchor }
+              : null
           onCraft(elements[aIndex], elements[bIndex])
         }
         activeStartPos.current = null
@@ -520,7 +524,12 @@ export function Workspace({
                 flashing={flashUids.has(key)}
                 isDragOverTarget={dragOverTargetKey === key}
                 onSelect={() => onSelect(index)}
-                onDoubleClick={() => onDuplicate(el)}
+                onDoubleClick={() => {
+                  // 复制出的卡片以原卡位置为生成中心
+                  const pos = positions[key]
+                  if (pos) lastCraftCenter.current = { ...pos }
+                  onDuplicate(el)
+                }}
               />
             </div>
           )
