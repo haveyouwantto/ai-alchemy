@@ -704,7 +704,7 @@ export function useWorkspace(options?: {
       const recipeDesc =
         relatedRecipes.length > 0
           ? relatedRecipes
-              .map((r) => `${r.inputA}+${r.inputB} -> ${r.outputs.join(',')}`)
+              .map((r) => `${r.inputA}${r.subtract ? '−' : '+'}${r.inputB} -> ${r.outputs.join(',')}`)
               .join('; ')
           : '（无）'
 
@@ -1034,6 +1034,7 @@ export function useWorkspace(options?: {
           inputA: inputA.id,
           inputB: inputB.id,
           outputs: resolvedOutputs,
+          subtract: subtract ? true : undefined,
         }
 
         bumpUseCount(inputA.id)

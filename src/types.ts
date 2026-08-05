@@ -75,6 +75,8 @@ export interface Recipe {
   inputA: string // 元素ID
   inputB: string // 元素ID
   outputs: string[] // 元素ID数组 1~3
+  /** 减法合成配方（有序 A−B） */
+  subtract?: boolean
 }
 
 /** 合成触发记录（流水账：每次触发一次合成记录一条；遵循范式，仅以 recipeId 引用配方，不冗余元素信息） */

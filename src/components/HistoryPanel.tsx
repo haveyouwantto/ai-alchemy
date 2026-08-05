@@ -212,7 +212,9 @@ export function HistoryPanel({ history, recipes, elements, categories, onAdd, op
                                 <HistoryIcon svg={elA?.svg ?? ''} size={24} />
                                 <span className="text-xs font-semibold text-amber-950">{elA?.name ?? '?'}</span>
                               </button>
-                              <span className="text-xs font-bold text-amber-700">+</span>
+                              <span className="text-xs font-bold text-amber-700">
+                                {recipe.subtract ? '−' : '+'}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => elB && setDetailElement(elB)}

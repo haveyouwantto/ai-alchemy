@@ -62,7 +62,7 @@ function RecipeMini({
         <CodexIcon svg={elA?.svg ?? ''} size={22} />
         <span className="text-[11px] font-semibold text-amber-900">{elA?.name ?? '?'}</span>
       </button>
-      <span className="text-[11px] text-amber-700">+</span>
+      <span className="text-[11px] text-amber-700">{recipe.subtract ? '−' : '+'}</span>
       <button
         type="button"
         onClick={(e) => {
