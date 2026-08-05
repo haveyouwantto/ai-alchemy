@@ -872,6 +872,7 @@ export function useWorkspace(options?: {
               }
               messages.push({
                 role: 'tool',
+                name: tc.function.name,
                 tool_call_id: tc.id,
                 content: toolError
                   ? JSON.stringify({ error: toolError })
@@ -884,6 +885,7 @@ export function useWorkspace(options?: {
                 toolError = 'craft_elements 的 new_elements 缺失或为空'
                 messages.push({
                   role: 'tool',
+                  name: tc.function.name,
                   tool_call_id: tc.id,
                   content: JSON.stringify({ error: toolError }),
                 })
@@ -956,6 +958,7 @@ export function useWorkspace(options?: {
               }
               messages.push({
                 role: 'tool',
+                name: tc.function.name,
                 tool_call_id: tc.id,
                 content: toolError
                   ? JSON.stringify({ error: toolError })
@@ -968,6 +971,7 @@ export function useWorkspace(options?: {
                 toolError = 'craft_recipe 的 output_element_ids 必须为 1~3 个元素ID'
                 messages.push({
                   role: 'tool',
+                  name: tc.function.name,
                   tool_call_id: tc.id,
                   content: JSON.stringify({ error: toolError }),
                 })
@@ -976,6 +980,7 @@ export function useWorkspace(options?: {
               recipeOutputIds = ids
               messages.push({
                 role: 'tool',
+                name: tc.function.name,
                 tool_call_id: tc.id,
                 content: JSON.stringify({ ok: true, received_output_ids: recipeOutputIds }),
               })

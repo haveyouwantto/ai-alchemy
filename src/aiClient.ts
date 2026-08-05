@@ -106,7 +106,7 @@ export async function callChatCompletion(
     // 规范化 tool_calls（过滤无效项）
     const normalizedMessage: ChatMessage = {
       ...message,
-      content: message.content ?? null,
+      content: (message.tool_calls ?? []).length > 0 ? null : (message.content ?? null),
       tool_calls: (message.tool_calls ?? []).filter(
         (tc): tc is ToolCall => !!tc && !!tc.function && typeof tc.function.arguments === 'string',
       ),
@@ -251,7 +251,7 @@ export async function streamChatCompletion(
 
     const message: ChatMessage = {
       role: 'assistant',
-      content: fullContent || null,
+      content: toolCalls.length > 0 ? null : (fullContent || null),
       tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
     }
 
