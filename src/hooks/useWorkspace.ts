@@ -320,14 +320,8 @@ export function useWorkspace(options?: {
     return {
       elements,
       recipes: stored.recipes,
-      // 基础类别采用官方描述与图标
-      categories:
-        stored.categories.length > 0
-          ? stored.categories.map((c) => {
-              const official = INITIAL_WORKSPACE.categories.find((def) => def.id === c.id)
-              return official ? { ...c, description: official.description, icon: official.icon } : c
-            })
-          : INITIAL_WORKSPACE.categories,
+      // 旧存档保留原类别；新存档使用初始类别
+      categories: stored.categories.length > 0 ? stored.categories : INITIAL_WORKSPACE.categories,
       unlockedElements: stored.unlockedElements.map((e) => {
         const official = INITIAL_ELEMENTS.find((def) => def.id === e.id)
         return {
