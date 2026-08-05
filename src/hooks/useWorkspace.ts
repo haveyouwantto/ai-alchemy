@@ -69,7 +69,7 @@ const STORAGE_KEY = 'alchemy-workspace-data'
 
 /** 类别 ID 归一化映射 */
 const LEGACY_CATEGORY_ID_MAP: Record<string, string> = {
-  tian_di_wan_xiang: 'cosmos',
+  tian_di_wan_xiang: 'primal_matter',
 }
 
 /** 存档中桌面的紧凑元素引用：只存元素 id + 实例 uid + 位置（px，相对工作区容器左上角） */

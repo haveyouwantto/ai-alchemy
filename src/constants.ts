@@ -8,7 +8,7 @@ export const INITIAL_ELEMENTS: Element[] = defaultWorkspace.elements as Element[
 export const INITIAL_CATEGORIES: ElementCategory[] = defaultWorkspace.categories as ElementCategory[]
 
 /** 默认类别 ID：天地万象 */
-export const DEFAULT_CATEGORY_ID = 'cosmos'
+export const DEFAULT_CATEGORY_ID = 'primal_matter'
 
 /** 初始工作区：仅基础元素 + 天地万象类别，配方书为空 */
 export const INITIAL_WORKSPACE: { elements: Element[]; recipes: Recipe[]; categories: ElementCategory[] } = {
