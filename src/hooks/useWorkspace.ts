@@ -67,7 +67,7 @@ interface StateRef {
 
 const STORAGE_KEY = 'alchemy-workspace-data'
 
-/** 旧拼音类别 ID → 英文 ID 迁移映射 */
+/** 类别 ID 归一化映射 */
 const LEGACY_CATEGORY_ID_MAP: Record<string, string> = {
   tian_di_wan_xiang: 'cosmos',
 }
@@ -101,7 +101,7 @@ interface StoredWorkspace {
 
 /**
  * 从 localStorage 加载持久化的工作区数据。
- * 兼容旧数据：无 categories/description/unlockedElements 时补默认；旧拼音类别 ID 迁移为英文 ID。
+ * 存档缺失字段时补默认；类别 ID 统一为英文。
  * 桌面元素支持两种格式：
  * - 新格式：紧凑引用 { instanceUid, id, x, y }，加载时用图鉴模板还原完整元素；
  * - 旧格式：完整元素对象（含 svg/description 等冗余字段）。
@@ -119,7 +119,7 @@ function loadStoredWorkspace(): StoredWorkspace {
         achievements?: Record<string, number>
       }
       if (Array.isArray(parsed.elements) && Array.isArray(parsed.recipes)) {
-        // 仅迁移类别 ID（元素 ID 不迁移：wind 等 ID 让 AI 自由创建「风」）
+        // 只归一化类别 ID，元素 ID 保持原样
         const migId = (id: string) => LEGACY_CATEGORY_ID_MAP[id] ?? id
         const categories = Array.isArray(parsed.categories)
           ? parsed.categories.map((c) => ({ ...c, id: migId(c.id) }))
@@ -136,7 +136,7 @@ function loadStoredWorkspace(): StoredWorkspace {
             categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
           }))
         } else if (isCompact) {
-          // 紧凑存档缺图鉴时兜底为基础元素
+          // 紧凑存档未含图鉴时使用基础元素
           unlockedElements = [...INITIAL_WORKSPACE.elements]
         } else {
           const map = new Map<string, Element>()
@@ -144,7 +144,7 @@ function loadStoredWorkspace(): StoredWorkspace {
           unlockedElements = Array.from(map.values())
         }
 
-        // 模板索引：图鉴优先，基础元素兜底（保证桌面 id 总能还原）
+        // 模板索引：图鉴优先，基础元素补充，桌面卡片按 id 还原
         const templateMap = new Map<string, Element>()
         for (const t of unlockedElements) templateMap.set(t.id, t)
         for (const t of INITIAL_ELEMENTS) {
@@ -154,7 +154,7 @@ function loadStoredWorkspace(): StoredWorkspace {
         for (const t of RELIC_TEMPLATES) {
           if (!templateMap.has(t.id)) templateMap.set(t.id, t)
         }
-        // 旧秘宝 id 迁移：blackening → nigredo（炼金黑白赤黄命名）
+        // 秘宝 id：blackening 归入 nigredo
         const migRelicId = (id: string) => (id === 'blackening' ? 'nigredo' : id)
 
         let elements: Element[]
@@ -206,7 +206,7 @@ function loadStoredWorkspace(): StoredWorkspace {
               )
             : [],
           positions,
-          // 秘宝库存：仅保留非负整数；旧 id blackening 迁移为 nigredo；老存档按已解锁元素数量补发
+          // 秘宝库存：仅保留非负整数；blackening 归入 nigredo；按已解锁元素数量补足
           relics: (() => {
             const relics: Record<string, number> = {}
             const hasStored = parsed.relics && typeof parsed.relics === 'object'
@@ -233,12 +233,11 @@ function loadStoredWorkspace(): StoredWorkspace {
                   Math.floor(unlockedElements.length / RELIC_RUBEDO_UNLOCK_INTERVAL),
               }
             }
-            // 补齐缺失秘宝的初始数量（如新加入的白化）
+            // 补齐缺失秘宝的初始数量
             for (const [key, value] of Object.entries(INITIAL_RELIC_COUNTS)) {
               if (!(key in relics)) relics[key] = value
             }
-            // 老存档补发：按当前已解锁数量，把白化/黄化/赤化至少补足到应得数量
-            // （避免旧存档库存只停在初始值、解锁奖励被吞掉）
+            // 按已解锁数量把白化/黄化/赤化补足到应得数量
             const topUpUnlockRelic = (interval: number, relicId: string) => {
               const initial = INITIAL_RELIC_COUNTS[relicId] ?? 0
               const expected = initial + Math.floor(unlockedElements.length / interval)
@@ -294,7 +293,7 @@ export function useWorkspace(options?: {
   onRelicAward?: (awards: Array<{ relicId: string; count: number }>) => void
 }) {
   const { onAchievementComplete, onRelicAward } = options ?? {}
-  // 初始数据：加载持久化存档并确保每个实例都有 instanceUid，旧元素补描述/类别
+  // 初始数据：加载持久化存档，并确保每个实例都有 instanceUid、完整描述与类别
   const initial = useMemo(() => {
     const stored = loadStoredWorkspace()
     const defaultCategory = INITIAL_WORKSPACE.categories[0]
@@ -306,7 +305,7 @@ export function useWorkspace(options?: {
         id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
         description: e.description ?? '',
         categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
-        // 基础元素始终采用官方最新名称与图标（旧存档「风」→「气」+ 棕色粉末堆土）
+        // 基础元素采用官方名称与图标
         name: official?.name ?? e.name,
         svg: official?.svg ?? e.svg,
       }
@@ -321,7 +320,7 @@ export function useWorkspace(options?: {
     return {
       elements,
       recipes: stored.recipes,
-      // 基础类别（如天地万象）始终采用官方最新描述与图标，旧存档即时生效
+      // 基础类别采用官方描述与图标
       categories:
         stored.categories.length > 0
           ? stored.categories.map((c) => {
@@ -365,7 +364,7 @@ export function useWorkspace(options?: {
   const [newElementCount, setNewElementCount] = useState(initial.newElementCount)
   /** 已完成成就：achievementId → 完成时间戳 */
   const [achievements, setAchievements] = useState<Record<string, number>>(initial.achievements)
-  /** 已结算过的成就（StrictMode 防重；加载/导入时同步） */
+  /** 已结算过的成就（加载/导入时同步） */
   const claimedRef = useRef<Set<string>>(new Set(Object.keys(initial.achievements)))
 
   // 正在合成中（防止重复拖拽）
@@ -612,7 +611,7 @@ export function useWorkspace(options?: {
     awardRelic(RELIC_RUBEDO_UNLOCK_INTERVAL, 'rubedo')
     if (awards.length > 0) onRelicAward?.(awards)
     setUnlockedElements(next)
-    // 合成/反应解锁后顺带检查成就（用最新的解锁列表，避免计数滞后）
+    // 解锁后检查成就（用最新解锁列表）
     checkAchievements(next)
   }, [checkAchievements, onRelicAward])
 
@@ -683,7 +682,7 @@ export function useWorkspace(options?: {
         return items.length > 0 ? `「${c.name}」：${items.join('、')}` : null
       })
       .filter((s): s is string => !!s)
-    // 未归入任何已知类别的元素兜底（防止遗漏）
+    // 未归入任何已知类别的元素
     const knownCategoryIds = new Set(stateRef.current.categories.map((c) => c.id))
     const uncategorized = stateRef.current.unlockedElements
       .filter((e) => !knownCategoryIds.has(e.categoryId))
@@ -1354,7 +1353,7 @@ export function useWorkspace(options?: {
           return { ok: false, message: 'manifest.json 格式不正确或数据文件缺失' }
         }
 
-        // 秘宝库存（v4 存档；旧版本回退初始值；blackening → nigredo 迁移）
+        // 秘宝库存：缺失时使用初始值；blackening 归入 nigredo
         const importedRelics: Record<string, number> = { ...INITIAL_RELIC_COUNTS }
         if (data.relicsData?.relics && typeof data.relicsData.relics === 'object') {
           for (const [key, value] of Object.entries(data.relicsData.relics)) {

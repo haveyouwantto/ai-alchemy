@@ -404,7 +404,7 @@ export function ElementCodex({
           </div>
         </div>
 
-        {/* 类别栏：可点击切换筛选（min-h 固定行高，避免 tab 高度抖动） */}
+        {/* 类别栏：可点击切换筛选 */}
         <div className="alchemy-scroll flex min-h-[56px] items-center gap-2 overflow-x-auto border-b border-amber-900/20 bg-[#8b5a2b]/90 px-4 py-2">
           <button
             onClick={() => setCategoryFilter('all')}

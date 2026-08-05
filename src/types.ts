@@ -40,7 +40,7 @@ export interface Element {
 
 /** 秘宝：消耗品类特殊物品（与元素同画风，但用一次少一个） */
 export interface Relic {
-  /** 秘宝 ID（如 blackening） */
+  /** 秘宝 ID（如 nigredo） */
   id: string
   /** 秘宝名称 */
   name: string

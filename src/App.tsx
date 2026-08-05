@@ -106,8 +106,7 @@ export default function App() {
   const [mapRetry, setMapRetry] = useState(0)
   /** 新元素发现动画队列（依次播放：中央金光 → 飞向新卡） */
   const [revealQueue, setRevealQueue] = useState<RevealItem[]>([])
-  // 世界地图依赖较大的力导向渲染库，懒加载避免拖慢首屏；
-  // 用重试次数重建 lazy 组件，加载失败后「重试」能真正重新请求 chunk
+  // 世界地图按需懒加载；重试版本变化时重建组件
   const WorldMap = useMemo(
     () => lazy(() => import('./components/WorldMap').then((m) => ({ default: m.WorldMap }))),
     [mapRetry],
@@ -484,8 +483,7 @@ export default function App() {
   }, [selectedIndex, handleDelete, handleTidyWorkspace, handleClearWorkspace])
 
   // 快捷按钮容器：上大图标 + 下小字，数字徽章为右上角小黄点
-  // Android 系统 WebView 兼容：切后台再回来有时只重绘 CSS 背景、DOM 图层丢失（只剩桌布），
-  // 前台时强制整页重排重绘并触发 resize，让内容重新上屏
+  // 页面重新可见时强制整页重排重绘，确保内容完整上屏
   useEffect(() => {
     const forceRepaint = () => {
       const root = document.getElementById('root')

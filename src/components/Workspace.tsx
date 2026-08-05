@@ -53,7 +53,7 @@ interface Size {
 /** 工作区留白（px） */
 const PADDING = 24
 
-/** 按卡片基础尺寸估算真实渲染尺寸（在 DOM 测量就绪前兜底用） */
+  /** 按卡片基础尺寸估算真实渲染尺寸 */
 function estimateCardSize(size: number): Size {
   return { w: Math.max(48, Math.round(size * 0.9 + 4)), h: Math.max(52, Math.round(size * 0.9 + 10)) }
 }
@@ -149,10 +149,10 @@ export function Workspace({
   const containerRef = useRef<HTMLDivElement>(null)
   /** 卡片外层节点（用于读取真实渲染尺寸；offsetWidth/offsetHeight 不受拖拽 transform 影响） */
   const cardNodesRef = useRef(new Map<string, HTMLDivElement>())
-  /** 最新位置快照（供拖拽 modifier 同步读取，避免依赖 dnd-kit 的 rect 测量时序） */
+  /** 最新位置快照（供拖拽 modifier 同步读取） */
   const positionsRef = useRef(positions)
   positionsRef.current = positions
-  /** 已应用过的整理请求版本号：仅响应新一次的点击，防止随元素变化自动重排 */
+  /** 已应用过的整理请求版本号：仅在点击整理时响应 */
   const appliedTidyVersion = useRef(0)
 
   // 响应式卡片尺寸（移动端更小）
@@ -210,7 +210,7 @@ export function Workspace({
         let y: number
         const center = lastCraftCenter.current
         if (center) {
-          // 围绕中心小范围散布（扇形，避免重叠，但仍紧邻原料/原卡）
+          // 围绕中心小范围扇形散布
           const angle = (seed * 137.5 * Math.PI) / 180
           const radius = 26 + (seed % 3) * 14
           x = clamp(center.x + Math.cos(angle) * radius, minX, maxX)
@@ -233,7 +233,7 @@ export function Workspace({
     })
   }, [elements, getCardSize, onPositionsChange])
 
-  /** 元素被删除/合成消耗后，清理不再存在的坐标记录（防止旧 key 残留） */
+  /** 元素被删除/消耗后，清理对应坐标记录 */
   useEffect(() => {
     onPositionsChange((prev) => {
       const valid = new Set(elements.map((el, i) => uidKey(el, i)))
@@ -324,7 +324,7 @@ export function Workspace({
         return changed ? next : prev
       })
     }
-    // 挂载时同步拉回一次（布局阶段执行，避免首帧闪出屏幕）
+    // 挂载时同步拉回一次（布局阶段执行）
     clampAll()
     // 窗口尺寸变化时（rAF 节流）再次拉回
     let resizeRaf = 0
@@ -350,10 +350,7 @@ export function Workspace({
   /** 拖拽过程中的实时坐标快照：拖到哪就记到哪，合成产物以此为中心生成 */
   const dragSnapshotPos = useRef<Pos | null>(null)
 
-  /**
-   * 拖拽过程中就把卡片限制在工作区范围内（按真实尺寸 + 留白），
-   * 而不是松手时才钳制 —— 消除靠近右/下边缘时「回弹」的屏障感。
-   */
+  /** 拖拽过程中持续把卡片限制在工作区范围内（按真实尺寸 + 留白） */
   const clampToWorkspace = useMemo<Modifier>(
     () =>
       ({ transform, active }) => {
@@ -493,7 +490,7 @@ export function Workspace({
         const bIndex = elements.findIndex((el, i) => uidKey(el, i) === targetKey)
         if (bIndex >= 0) {
           // 新产物以「被拖卡片在拖拽过程中的坐标快照」为中心生成；
-          // 快照缺失时退回两张原料卡的中点，再退回任一原料卡的位置
+      // 快照缺失时取两张原料卡的中点，再取任一原料卡位置
           const pa = positions[activeKey]
           const pb = positions[targetKey]
           const anchor = pa ?? pb
@@ -541,7 +538,7 @@ export function Workspace({
           }
           return next
         })
-        // 移动后取消选中（避免误删）
+        // 移动后取消选中
         onSelect(-1)
       }
       activeStartPos.current = null
@@ -579,7 +576,7 @@ export function Workspace({
       >
         {elements.map((el, index) => {
           const key = uidKey(el, index)
-          // 兜底位置：默认网格排布（px）
+          // 默认位置：网格排布（px）
           const pos = positions[key] ?? {
             x: PADDING + (index % 5) * 150,
             y: PADDING + (index % 4) * 170,

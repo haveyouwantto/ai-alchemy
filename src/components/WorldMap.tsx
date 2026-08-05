@@ -69,7 +69,7 @@ function bfsSpanningTree(
   for (const id of nodeIds) {
     if (!visited.has(id) && !edges.some((e) => e.target === id)) bfs(id, null)
   }
-  // 兜底：游离孤岛优先复用原有边并入主树，避免出现「森林」
+  // 游离孤岛优先复用原有边并入主树
   for (let guard = 0; guard < nodeIds.length && visited.size < nodeIds.length; guard++) {
     let bridged = false
     for (const id of nodeIds) {
@@ -269,7 +269,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     if (!el) return
     const update = () => setSize({ width: el.clientWidth, height: el.clientHeight })
     update()
-    // ResizeObserver 缺失（旧浏览器/内置 WebView）时退回 window resize 监听
+    // 无 ResizeObserver 时改用 window resize 监听
     let ro: ResizeObserver | undefined
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(update)
@@ -329,7 +329,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
   const links = graphData.treeLinks
   const nodes = graphData.mstNodes
 
-  // 元素徽章 SVG → canvas 图片缓存（StrictMode 安全：加载状态存 ref，重复挂载不会丢回调）
+  // 元素徽章 SVG → canvas 图片缓存（加载状态存 ref）
   useEffect(() => {
     const loadImage = (id: string, svg: string) => {
       if (imagesRef.current.has(id) || loadingRef.current.has(id)) return
@@ -436,7 +436,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
       ctx.stroke()
     }
 
-    // 名称：缩放等级过小时不绘制，避免糊成一团
+    // 名称：缩放等级过小时不绘制
     if (globalScale >= 0.55) {
       const fontSize = 11 / globalScale
       ctx.font = `${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`
