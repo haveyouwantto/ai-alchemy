@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { AIConfig, Element } from './types'
 import { RELIC_PROMPTS, RELIC_TEMPLATES } from './constants'
 import { useWorkspace } from './hooks/useWorkspace'
@@ -6,12 +6,15 @@ import { Workspace } from './components/Workspace'
 import { ElementCodex } from './components/ElementCodex'
 import { RelicCodex } from './components/RelicCodex'
 import { TransmuteModal } from './components/TransmuteModal'
+import { Tutorial } from './components/Tutorial'
+
+// 世界地图依赖较大的力导向渲染库，懒加载避免拖慢首屏
+const WorldMap = lazy(() => import('./components/WorldMap').then((m) => ({ default: m.WorldMap })))
 import { HistoryPanel } from './components/HistoryPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { CraftingOverlay } from './components/CraftingOverlay'
 import { ToastContainer } from './components/Toast'
 import type { ToastData } from './components/Toast'
-import { Tutorial } from './components/Tutorial'
 
 export default function App() {
   const ws = useWorkspace()
@@ -46,6 +49,7 @@ export default function App() {
   const [showCodex, setShowCodex] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showRelics, setShowRelics] = useState(false)
+  const [showMap, setShowMap] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   /** 赤化点化：待提交说服文本（relic=赤化，element=被点化元素） */
   const [pendingTransmute, setPendingTransmute] = useState<{ relic: Element; element: Element } | null>(null)
@@ -465,6 +469,10 @@ export default function App() {
               {Object.values(relics).reduce((sum, n) => sum + n, 0)}
             </span>
           </ToolButton>
+          <ToolButton onClick={() => setShowMap(true)} title="世界地图：元素关系可视化" active={showMap}>
+            <span className="text-lg leading-none">🗺️</span>
+            <span className="hidden sm:inline">地图</span>
+          </ToolButton>
           <ToolButton onClick={handleExport} title="导出工作区 (ZIP)">
             <span className="text-lg leading-none">💾</span>
             <span className="hidden md:inline">导出</span>
@@ -556,6 +564,16 @@ export default function App() {
         onClose={() => setShowRelics(false)}
         onDeploy={handleDeployRelic}
       />
+      {showMap && (
+        <Suspense fallback={null}>
+          <WorldMap
+            elements={unlockedElements}
+            recipes={recipes}
+            open
+            onClose={() => setShowMap(false)}
+          />
+        </Suspense>
+      )}
       <SettingsModal
         open={showSettings}
         config={aiConfig}
