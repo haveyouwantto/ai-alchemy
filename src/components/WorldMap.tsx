@@ -480,10 +480,10 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
       <div className="relative z-10 flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-amber-700/40 bg-[#8b5a2b] shadow-2xl">
         {/* 页眉 */}
         <div className="flex items-center justify-between border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
-          <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图 · 元素关系网</h2>
+          <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图</h2>
           <div className="flex items-center gap-2">
             <span className="text-xs text-amber-200/80">
-              {graphData.nodes.filter((n) => String(n.id) !== WORLD_CORE_ID).length} 元素 · {links.length} 关联
+              {graphData.nodes.filter((n) => String(n.id) !== WORLD_CORE_ID).length} 元素
             </span>
             <button
               onClick={onClose}

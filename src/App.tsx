@@ -760,7 +760,7 @@ export default function App() {
                 <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowMap(false)} />
                 <div className="relative z-10 flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-amber-700/40 bg-[#8b5a2b] shadow-2xl">
                   <div className="flex items-center justify-between border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
-                    <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图 · 元素关系网</h2>
+                    <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图</h2>
                     <button
                       onClick={() => setShowMap(false)}
                       className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
