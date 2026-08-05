@@ -38,11 +38,10 @@ function ToastItem({ toast }: { toast: ToastData }) {
   const isSuccess = toast.kind !== 'error'
 
   return (
-    <div
-      style={style}
-      className="pointer-events-none relative w-72 overflow-hidden rounded-2xl border-2 border-amber-800/50 bg-gradient-to-b from-[#3a2512]/95 to-[#241608]/95 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)]"
-    >
-      <div className="flex items-start gap-3">
+    <div style={style} className="pointer-events-none relative w-72">
+      {/* 背景层：圆角裁切只作用于背景，不裁掉落动画 */}
+      <div className="absolute inset-0 overflow-hidden rounded-2xl border-2 border-amber-800/50 bg-gradient-to-b from-[#3a2512]/95 to-[#241608]/95 shadow-[0_10px_30px_rgba(0,0,0,0.6)]" />
+      <div className="relative z-10 flex items-start gap-3 p-4">
         <span className="text-2xl">{isSuccess ? '✨' : '⚠️'}</span>
         <div>
           <p className="font-bold text-amber-200">{toast.title}</p>
@@ -65,10 +64,10 @@ function ToastItem({ toast }: { toast: ToastData }) {
         toast.elements?.map((el, i) => (
           <span
             key={i}
-            className="absolute animate-float-down opacity-0"
+            className="absolute z-20 animate-float-down opacity-0"
             style={{
               left: `${20 + i * 28}%`,
-              top: '50%',
+              top: '45%',
               animationDelay: `${i * 0.15}s`,
               width: 28,
               height: 28,

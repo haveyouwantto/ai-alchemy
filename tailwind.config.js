@@ -22,8 +22,8 @@ export default {
           '50%': { boxShadow: '0 0 24px rgba(251, 191, 36, 0.9)' },
         },
         floatDown: {
-          '0%': { transform: 'translateY(-20px)', opacity: '1' },
-          '100%': { transform: 'translateY(60px)', opacity: '0' },
+          '0%': { transform: 'translateY(-26px)', opacity: '1' },
+          '100%': { transform: 'translateY(120px)', opacity: '0' },
         },
         flash: {
           '0%, 100%': { filter: 'brightness(1)' },
