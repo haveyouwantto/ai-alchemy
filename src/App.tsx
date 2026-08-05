@@ -100,7 +100,8 @@ export default function App() {
   /** 减法模式解锁时的箭头教程 */
   const [subtractHint, setSubtractHint] = useState(false)
   const SUBTRACT_HINT_KEY = 'alchemy-subtract-hint-seen'
-  const subtractUnlocked = (newElementCount ?? 0) >= 150
+  // 已合成元素进度：新档用累计合成数，老存档没有该字段时按已解锁元素数兜底，两者取较大值
+  const subtractUnlocked = Math.max(newElementCount ?? 0, unlockedElements.length) >= 150
 
   // 解锁减法模式时展示一次箭头说明
   useEffect(() => {
