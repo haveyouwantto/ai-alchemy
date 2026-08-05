@@ -569,6 +569,8 @@ export default function App() {
           <WorldMap
             elements={unlockedElements}
             recipes={recipes}
+            categories={categories}
+            onAdd={handleAddFromCodex}
             open
             onClose={() => setShowMap(false)}
           />

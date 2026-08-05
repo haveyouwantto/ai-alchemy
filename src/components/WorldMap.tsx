@@ -1,26 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph2D, { type ForceGraphProps, type NodeObject } from 'react-force-graph-2d'
-import type { Element, Recipe } from '../types'
+import type { Element, ElementCategory, Recipe } from '../types'
 import { sanitizeSVG } from '../utils'
+import { ElementDetailModal } from './ElementCodex'
 
 interface WorldMapProps {
   elements: Element[]
   recipes: Recipe[]
+  categories: ElementCategory[]
+  onAdd: (el: Element) => void
   open: boolean
   onClose: () => void
 }
 
 type GraphNode = NodeObject<Element>
 
-/** 节点绘制半径（屏幕像素） */
-const NODE_R = 16
+/** 节点绘制半径（世界坐标单位；随缩放一起变化） */
+const NODE_R = 14
 
-export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
+export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }: WorldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const fgRef = useRef<any>(undefined)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [selected, setSelected] = useState<string | null>(null)
+  const [detailElement, setDetailElement] = useState<Element | null>(null)
   const imagesRef = useRef<Map<string, HTMLImageElement | undefined>>(new Map())
+  const loadingRef = useRef<Set<string>>(new Set())
   const [, forceTick] = useState(0)
 
   // 容器尺寸（适配弹窗）
@@ -52,32 +57,21 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
     return { nodes, links: Array.from(linkMap.values()) }
   }, [elements, recipes])
 
-  // 元素徽章 SVG → canvas 图片缓存
+  // 元素徽章 SVG → canvas 图片缓存（StrictMode 安全：加载状态存 ref，重复挂载不会丢回调）
   useEffect(() => {
-    let alive = true
     for (const el of elements) {
-      if (imagesRef.current.has(el.id)) continue
+      if (imagesRef.current.has(el.id) || loadingRef.current.has(el.id)) continue
+      loadingRef.current.add(el.id)
       const img = new Image()
       img.onload = () => {
-        if (alive) {
-          imagesRef.current.set(el.id, img)
-          forceTick((t) => t + 1)
-          // 图标就绪后强制画布重绘
-          ;(fgRef.current as any)?.refresh?.()
-        }
+        imagesRef.current.set(el.id, img)
+        forceTick((t) => t + 1)
       }
       img.onerror = () => {
-        if (alive) {
-          imagesRef.current.set(el.id, undefined)
-          forceTick((t) => t + 1)
-          ;(fgRef.current as any)?.refresh?.()
-        }
+        imagesRef.current.set(el.id, undefined)
+        forceTick((t) => t + 1)
       }
-      imagesRef.current.set(el.id, undefined)
       img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSVG(el.svg))}`
-    }
-    return () => {
-      alive = false
     }
   }, [elements])
 
@@ -111,7 +105,7 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
     const n = node as GraphNode
     const x = n.x ?? 0
     const y = n.y ?? 0
-    const r = NODE_R / globalScale
+    const r = NODE_R
     const id = String(n.id)
     const isSel = id === selected
     const isNeighbor = neighbors.has(id)
@@ -119,7 +113,7 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
     // 高亮环
     if (isSel) {
       ctx.beginPath()
-      ctx.arc(x, y, r + 5 / globalScale, 0, 2 * Math.PI)
+      ctx.arc(x, y, r + 5, 0, 2 * Math.PI)
       ctx.fillStyle = 'rgba(217,119,6,0.18)'
       ctx.fill()
       ctx.strokeStyle = '#d97706'
@@ -127,7 +121,7 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
       ctx.stroke()
     } else if (isNeighbor) {
       ctx.beginPath()
-      ctx.arc(x, y, r + 4 / globalScale, 0, 2 * Math.PI)
+      ctx.arc(x, y, r + 4, 0, 2 * Math.PI)
       ctx.strokeStyle = '#b45309'
       ctx.lineWidth = 1.5 / globalScale
       ctx.stroke()
@@ -161,7 +155,7 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
     const n = node as GraphNode
     ctx.fillStyle = color
     ctx.beginPath()
-    ctx.arc(n.x ?? 0, n.y ?? 0, NODE_R + 6, 0, 2 * Math.PI)
+    ctx.arc(n.x ?? 0, n.y ?? 0, NODE_R, 0, 2 * Math.PI)
     ctx.fill()
   }
 
@@ -179,6 +173,8 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
   }
 
   if (!open) return null
+
+  const selectedEl = selected ? elements.find((e) => e.id === selected) : undefined
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
@@ -226,6 +222,47 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
               cooldownTime={8000}
             />
           ) : null}
+
+          {/* 选中元素信息面板（右下角） */}
+          {selectedEl && (
+            <div className="absolute bottom-3 right-3 z-10 flex w-64 flex-col gap-1.5 rounded-xl border border-amber-800/40 bg-[#fdf6e3] p-3 shadow-xl">
+              <div className="flex items-center gap-2">
+                <span
+                  className="svg-shell inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-amber-100/70"
+                  dangerouslySetInnerHTML={{ __html: sanitizeSVG(selectedEl.svg) }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-amber-950">{selectedEl.name}</p>
+                  <p className="truncate font-mono text-[10px] text-amber-700/70">{selectedEl.id}</p>
+                </div>
+                <button
+                  onClick={() => setSelected(null)}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200/70 text-xs text-amber-800 transition-colors hover:bg-amber-300"
+                  aria-label="关闭"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="line-clamp-3 text-xs leading-relaxed text-amber-900/80">
+                {selectedEl.description || '暂无描述'}
+              </p>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => onAdd(selectedEl)}
+                  className="flex-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 py-1.5 text-sm font-bold text-amber-950 transition-all hover:brightness-110 active:scale-95"
+                >
+                  ＋ 添加到桌面
+                </button>
+                <button
+                  onClick={() => setDetailElement(selectedEl)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-800/40 bg-amber-100 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-200"
+                  title="查看详情"
+                >
+                  i
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 底部提示 */}
@@ -233,6 +270,19 @@ export function WorldMap({ elements, recipes, open, onClose }: WorldMapProps) {
           滚轮缩放 · 拖动平移 · 点击元素高亮其合成关系
         </div>
       </div>
+
+      {/* 元素详情 */}
+      {detailElement && (
+        <ElementDetailModal
+          element={detailElement}
+          category={categories.find((c) => c.id === detailElement.categoryId)}
+          recipes={recipes}
+          elements={elements}
+          categories={categories}
+          onAdd={onAdd}
+          onClose={() => setDetailElement(null)}
+        />
+      )}
     </div>
   )
 }
