@@ -8,8 +8,10 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import type { DragEndEvent, DragOverEvent, DragStartEvent, Modifier } from '@dnd-kit/core'
+import type { DragEndEvent, DragMoveEvent, DragOverEvent, DragStartEvent, Modifier } from '@dnd-kit/core'
 import type { CardPosition, Element } from '../types'
+import { INITIAL_ELEMENTS } from '../constants'
+import { uuid } from '../utils'
 import { ElementCard } from './ElementCard'
 
 interface WorkspaceProps {
@@ -19,6 +21,8 @@ interface WorkspaceProps {
   /** 桌面卡片坐标（key=instanceUid，单位 px，相对工作区容器左上角） */
   positions: Record<string, CardPosition>
   onPositionsChange: (updater: React.SetStateAction<Record<string, CardPosition>>) => void
+  /** 双击空白处召唤四基础元素：接收已构造好的实例（自带 instanceUid 与位置） */
+  onAddBasics: (instances: Element[]) => void
   /** 整理桌面请求版本号：>0 且变化时触发平铺 */
   tidyVersion: number
   onSelect: (index: number) => void
@@ -105,11 +109,23 @@ function DraggableCard({
         flashing={flashing}
         selected={selected}
         onClick={onSelect}
-        onDoubleClick={onDoubleClick}
+        onDoubleClick={(e) => {
+          // 卡片的双击是「复制」，阻止冒泡避免触发空白处召唤
+          e.stopPropagation()
+          onDoubleClick()
+        }}
       />
     </div>
   )
 }
+
+/** 四大基础元素围绕点击点的方位：火左、水右、气上、土下 */
+const BASIC_ORDER = [
+  { id: 'fire', dx: -1, dy: 0 },
+  { id: 'water', dx: 1, dy: 0 },
+  { id: 'air', dx: 0, dy: -1 },
+  { id: 'earth', dx: 0, dy: 1 },
+] as const
 
 export function Workspace({
   elements,
@@ -117,6 +133,7 @@ export function Workspace({
   flashUids,
   positions,
   onPositionsChange,
+  onAddBasics,
   tidyVersion,
   onSelect,
   onCraft,
@@ -327,6 +344,8 @@ export function Workspace({
 
   const activeKeyRef = useRef<string | null>(null)
   const activeStartPos = useRef<Pos | null>(null)
+  /** 拖拽过程中的实时坐标快照：拖到哪就记到哪，合成产物以此为中心生成 */
+  const dragSnapshotPos = useRef<Pos | null>(null)
 
   /**
    * 拖拽过程中就把卡片限制在工作区范围内（按真实尺寸 + 留白），
@@ -361,15 +380,53 @@ export function Workspace({
       const key = String(event.active.id)
       activeKeyRef.current = key
       activeStartPos.current = positions[key] ?? null
+      dragSnapshotPos.current = activeStartPos.current ? { ...activeStartPos.current } : null
       setIsDraggingAny(true)
     },
     [positions],
   )
 
+  const handleDragMove = useCallback((event: DragMoveEvent) => {
+    const start = activeStartPos.current
+    if (!start || !event.delta) return
+    dragSnapshotPos.current = { x: start.x + event.delta.x, y: start.y + event.delta.y }
+  }, [])
+
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over ? String(event.over.id) : null
     setDragOverId(overId && overId.startsWith('drop-') ? overId : null)
   }, [])
+
+  /** 双击空白处：以点击点为中心召唤四大基础元素（火左、水右、气上、土下） */
+  const handleWorkspaceDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const cx = e.clientX - rect.left
+      const cy = e.clientY - rect.top
+      const gap = 12
+      const cw = rect.width
+      const ch = rect.height
+      const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+      const size = estimateCardSize(cardSizeRef.current)
+      const instances: Element[] = []
+      const next = { ...positionsRef.current }
+      for (const { id, dx, dy } of BASIC_ORDER) {
+        const template = INITIAL_ELEMENTS.find((t) => t.id === id)
+        if (!template) continue
+        const instanceUid = uuid()
+        const x = clamp(cx + dx * (size.w / 2 + gap), PADDING, Math.max(PADDING, cw - size.w - PADDING))
+        const y = clamp(cy + dy * (size.h / 2 + gap), PADDING, Math.max(PADDING, ch - size.h - PADDING))
+        next[instanceUid] = { x, y }
+        instances.push({ ...template, createdAt: Date.now(), instanceUid })
+      }
+      if (instances.length > 0) {
+        onPositionsChange(next)
+        onAddBasics(instances)
+      }
+    },
+    [onPositionsChange, onAddBasics],
+  )
 
   // ---- 垃圾桶（拖入即删实例） ----
   const { setNodeRef: setTrashRef, isOver: isOverTrash } = useDroppable({ id: 'trash-can' })
@@ -405,6 +462,8 @@ export function Workspace({
       const targetKey = overRaw && overRaw.startsWith('drop-') ? overRaw.slice(5) : null
       setDragOverId(null)
       activeKeyRef.current = null
+      const dragSnapshot = dragSnapshotPos.current
+      dragSnapshotPos.current = null
       setIsDraggingAny(false)
       // 几何判定：活动卡片中心是否落在垃圾桶屏幕区域（绕开 droppable over 的不可靠性）
       const activeRectMap = event.active.rect.current as { initial?: ClientRect; translated?: ClientRect }
@@ -430,15 +489,18 @@ export function Workspace({
       if (targetKey && targetKey !== activeKey) {
         const bIndex = elements.findIndex((el, i) => uidKey(el, i) === targetKey)
         if (bIndex >= 0) {
-          // 新产物以两张原料卡的中点为中心生成（任一卡缺位置时用另一张）
+          // 新产物以「被拖卡片在拖拽过程中的坐标快照」为中心生成；
+          // 快照缺失时退回两张原料卡的中点，再退回任一原料卡的位置
           const pa = positions[activeKey]
           const pb = positions[targetKey]
           const anchor = pa ?? pb
-          lastCraftCenter.current = pa && pb
-            ? { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }
-            : anchor
-              ? { ...anchor }
-              : null
+          lastCraftCenter.current =
+            dragSnapshot ??
+            (pa && pb
+              ? { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }
+              : anchor
+                ? { ...anchor }
+                : null)
           onCraft(elements[aIndex], elements[bIndex])
         }
         activeStartPos.current = null
@@ -477,6 +539,7 @@ export function Workspace({
     setDragOverId(null)
     activeKeyRef.current = null
     activeStartPos.current = null
+    dragSnapshotPos.current = null
     setIsDraggingAny(false)
   }, [])
 
@@ -486,11 +549,16 @@ export function Workspace({
   }, [dragOverId])
 
   return (
-    <div ref={containerRef} className="workbench relative flex-1 overflow-hidden">
+    <div
+      ref={containerRef}
+      className="workbench relative flex-1 overflow-hidden"
+      onDoubleClick={handleWorkspaceDoubleClick}
+    >
       <DndContext
         sensors={sensors}
         modifiers={[clampToWorkspace]}
         onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
@@ -541,6 +609,7 @@ export function Workspace({
             setTrashRef(node)
             trashRef.current = node as HTMLDivElement | null
           }}
+          onDoubleClick={(e) => e.stopPropagation()}
           className={`absolute bottom-4 right-4 z-20 flex h-16 w-16 items-center justify-center rounded-2xl border-2 text-3xl transition-all duration-200 ${
             isOverTrash
               ? 'scale-110 border-red-400 bg-red-900/80 shadow-lg shadow-red-500/30'
@@ -557,6 +626,7 @@ export function Workspace({
         {elements.length === 0 && (
           <button
             onClick={onOpenLibrary}
+            onDoubleClick={(e) => e.stopPropagation()}
             className="parchment-panel absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-dashed border-amber-700/50 px-8 py-10 text-center text-amber-900 shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-colors hover:border-amber-500/80 hover:brightness-105"
           >
             <span className="text-4xl">🧪</span>

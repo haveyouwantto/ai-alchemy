@@ -330,6 +330,12 @@ export function useWorkspace() {
     [],
   )
 
+  /** 直接向桌面添加一批已构造好的实例（每个实例必须自带独立 instanceUid） */
+  const addElementInstances = useCallback((instances: Element[]) => {
+    if (instances.length === 0) return
+    setElements((prev) => [...prev, ...instances])
+  }, [])
+
   /**
    * 清空桌面：仅清空桌面上的元素实例为初始四基础元素。
    * 保留：配方书、图鉴（已解锁库）、类别、合成历史 —— 玩家的进度不会丢失。
@@ -1166,6 +1172,7 @@ export function useWorkspace() {
     duplicateElement,
     removeElementInstance,
     addElementFromLibrary,
+    addElementInstances,
     resetWorkspace,
     clearAllData,
     clearCraftHistory,

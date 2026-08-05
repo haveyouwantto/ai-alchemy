@@ -28,6 +28,7 @@ export default function App() {
     duplicateElement,
     removeElementInstance,
     addElementFromLibrary,
+    addElementInstances,
     resetWorkspace,
     clearAllData,
     clearCraftHistory,
@@ -380,6 +381,14 @@ export default function App() {
         flashUids={flashUids}
         positions={positions}
         onPositionsChange={setPositions}
+        onAddBasics={(instances) => {
+          addElementInstances(instances)
+          pushToast(
+            `已召唤：${instances.map((e) => e.name).join('、')}`,
+            instances.map((e) => ({ name: e.name, svg: e.svg })),
+            'success',
+          )
+        }}
         tidyVersion={tidyVersion}
         onSelect={setSelectedIndex}
         onCraft={handleCraft}
