@@ -5,6 +5,7 @@ import { useWorkspace } from './hooks/useWorkspace'
 import { Workspace } from './components/Workspace'
 import { ElementCodex } from './components/ElementCodex'
 import { RelicCodex } from './components/RelicCodex'
+import { TransmuteModal } from './components/TransmuteModal'
 import { HistoryPanel } from './components/HistoryPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { CraftingOverlay } from './components/CraftingOverlay'
@@ -25,6 +26,7 @@ export default function App() {
     relics,
     isCrafting,
     craft,
+    transmutePoint,
     exportWorkspace,
     importWorkspace,
     getExportFilename,
@@ -45,6 +47,8 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [showRelics, setShowRelics] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  /** 赤化点化：待提交说服文本（relic=赤化，element=被点化元素） */
+  const [pendingTransmute, setPendingTransmute] = useState<{ relic: Element; element: Element } | null>(null)
   /** 整理桌面请求版本号（每次 +1 触发工作区平铺） */
   const [tidyVersion, setTidyVersion] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -102,6 +106,14 @@ export default function App() {
   const handleCraft = useCallback(
     async (elementA: Element, elementB: Element) => {
       if (isCrafting) return
+      // 赤化点化：不直接合成，先弹说服框
+      const relicId = elementA.relicId ?? elementB.relicId
+      if (relicId === 'rubedo') {
+        const relic = elementA.relicId ? elementA : elementB
+        const elem = elementA.relicId ? elementB : elementA
+        setPendingTransmute({ relic, element: elem })
+        return
+      }
       // 记录合成中的元素（显示在贤者之石界面），并重置流式输出
       setCraftInputs([
         { name: elementA.name, svg: elementA.svg },
@@ -131,6 +143,11 @@ export default function App() {
       if (outcome.type === 'error') {
         setCraftInputs([])
         pushToast(`炼金术失灵：${outcome.message}`, undefined, 'error')
+        return
+      }
+      if (outcome.type === 'refused') {
+        setCraftInputs([])
+        pushToast(`贤者拒绝了这次请求：${outcome.message}`, undefined, 'error')
         return
       }
       // 明显的合成公式 Toast：输入 + 输出（新元素和已知元素都展示）
@@ -257,6 +274,65 @@ export default function App() {
       }
     },
     [deployRelic, pushToast],
+  )
+
+  // ---- 赤化点化：提交说服文本，AI 裁决 ----
+  const handleTransmute = useCallback(
+    async (request: string) => {
+      if (!pendingTransmute) return
+      const { relic, element } = pendingTransmute
+      setPendingTransmute(null)
+      if (isCrafting) return
+      setCraftInputs([
+        { name: relic.name, svg: relic.svg },
+        { name: element.name, svg: element.svg },
+      ])
+      setStreamText('')
+      setCraftMessage('赤化点化中...')
+      const flashKeys = new Set<string>()
+      if (relic.instanceUid) flashKeys.add(relic.instanceUid)
+      if (element.instanceUid) flashKeys.add(element.instanceUid)
+      setFlashUids(flashKeys)
+      setTimeout(() => setFlashUids(new Set()), 600)
+
+      const outcome = await transmutePoint(
+        relic,
+        element,
+        request,
+        aiConfig,
+        setCraftMessage,
+        (text) => setStreamText((prev) => prev + text),
+      )
+      if (outcome.type === 'refused') {
+        setCraftInputs([])
+        pushToast(`贤者拒绝了点化：${outcome.message}`, undefined, 'error')
+        return
+      }
+      if (outcome.type === 'error') {
+        setCraftInputs([])
+        pushToast(`点化失灵：${outcome.message}`, undefined, 'error')
+        return
+      }
+      const outcomeElements = outcome.added.map((e) => ({ name: e.name, svg: e.svg }))
+      pushToast(
+        `🔮 点化应允：${element.name} 化为 ${outcomeElements.map((e) => e.name).join('、')}`,
+        outcomeElements,
+        'success',
+      )
+      if (outcome.type === 'ai' && outcome.newElements.length > 0) {
+        for (const el of outcome.newElements) {
+          pushToast(
+            `✨ 新元素「${el.name}」显现`,
+            [{ name: el.name, svg: el.svg }],
+            'success',
+            el.description || undefined,
+            true,
+          )
+        }
+      }
+      setTimeout(() => setCraftInputs([]), 500)
+    },
+    [pendingTransmute, isCrafting, transmutePoint, aiConfig, pushToast],
   )
 
   // ---- 导入 / 导出 ----
@@ -489,6 +565,16 @@ export default function App() {
           pushToast('世界已重置为初始状态，AI 配置保留', undefined, 'success')
         }}
       />
+
+      {/* 赤化点化：说服弹窗 */}
+      {pendingTransmute && (
+        <TransmuteModal
+          relic={pendingTransmute.relic}
+          element={pendingTransmute.element}
+          onClose={() => setPendingTransmute(null)}
+          onSubmit={handleTransmute}
+        />
+      )}
 
       {/* 合成加载弹窗（贤者之石 + 合成元素 + AI 流式输出） */}
       <CraftingOverlay

@@ -40,12 +40,34 @@ export const RELIC_TEMPLATES: Element[] = [
     useCount: 0,
     relicId: 'albedo',
   },
+  {
+    id: 'relic_citrinitas',
+    name: '黄化',
+    description: '熔金之辉，炼金四阶段之三。烈焰淬炼，令物质升华——将一个元素精炼为更精纯、更高阶的具体物质。消耗品，用一次少一个。',
+    categoryId: 'relics',
+    svg: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="citriGlow" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="#fbbf24" stop-opacity="0.55"/><stop offset="100%" stop-color="#92400e" stop-opacity="0"/></radialGradient><linearGradient id="citriPlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#78350f"/><stop offset="55%" stop-color="#5b2a0b"/><stop offset="100%" stop-color="#451a03"/></linearGradient><linearGradient id="citriGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fde68a"/><stop offset="100%" stop-color="#d97706"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="url(#citriGlow)"/><circle cx="50" cy="50" r="37" fill="url(#citriPlate)"/><circle cx="50" cy="50" r="37" fill="none" stroke="#fcd34d" stroke-opacity="0.3" stroke-width="1.5"/><ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.1" transform="rotate(-28 38 33)"/><path d="M33 66 L37 44 L63 44 L67 66 Z" fill="url(#citriGold)"/><path d="M37 44 L50 34 L63 44 Z" fill="#fde68a"/><path d="M45 54 L50 48 L55 54 L50 60 Z" fill="#b45309" opacity="0.5"/></svg>',
+    createdAt: 0,
+    useCount: 0,
+    relicId: 'citrinitas',
+  },
+  {
+    id: 'relic_rubedo',
+    name: '赤化',
+    description: '赤霞之辉，炼金四阶段之终。贤者之石的临门一脚——点化一个元素，将其转化为你指定的另一元素，成败全凭说服。消耗品，成功点化才消耗。',
+    categoryId: 'relics',
+    svg: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="rubedoGlow" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="#f87171" stop-opacity="0.5"/><stop offset="100%" stop-color="#7f1d1d" stop-opacity="0"/></radialGradient><linearGradient id="rubedoPlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7f1d1d"/><stop offset="55%" stop-color="#641414"/><stop offset="100%" stop-color="#450a0a"/></linearGradient><radialGradient id="rubedoOrb" cx="45%" cy="38%" r="65%"><stop offset="0%" stop-color="#fecaca"/><stop offset="45%" stop-color="#ef4444"/><stop offset="100%" stop-color="#991b1b"/></radialGradient></defs><circle cx="50" cy="50" r="46" fill="url(#rubedoGlow)"/><circle cx="50" cy="50" r="37" fill="url(#rubedoPlate)"/><circle cx="50" cy="50" r="37" fill="none" stroke="#fca5a5" stroke-opacity="0.3" stroke-width="1.5"/><ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.1" transform="rotate(-28 38 33)"/><circle cx="50" cy="51" r="17" fill="none" stroke="#fecaca" stroke-width="2.5" opacity="0.8"/><circle cx="50" cy="51" r="11" fill="url(#rubedoOrb)"/><circle cx="46" cy="46" r="3" fill="#ffffff" opacity="0.6"/></svg>',
+    createdAt: 0,
+    useCount: 0,
+    relicId: 'rubedo',
+  },
 ]
 
 /** 秘宝初始库存 */
 export const INITIAL_RELIC_COUNTS: Record<string, number> = {
   nigredo: 5,
   albedo: 3,
+  citrinitas: 3,
+  rubedo: 1,
 }
 
 /** 每合成出多少个新元素，奖励 1 个「黑化」 */
@@ -121,16 +143,46 @@ ${CATEGORY_ICON_SVG}
 ${CATEGORY_ICON_RULE}
 4. 必须调用 craft_recipe 绑定本次输入（秘宝 + 被净化元素）与全部输出。`
 
+/** LLM 精炼提示词（黄化/citrinitas 秘宝专用） */
+export const REFINE_SYSTEM_PROMPT = `你是一个炼金术物质精炼师。玩家使用「黄化」秘宝与一个元素融合，把该元素精炼为更精纯、更高阶的具体物质形态。
+要求：
+1. 产出 1 个主产物（最多 3 个）：这是该元素系谱中更精纯、更高阶的物质形态，仍然具体可感（材料、矿石、结晶等实物），与白化「净化」的抽象概念截然不同；所有产物处于同一精纯层级、彼此并列，严禁越级或凭空升华。
+2. 产物可以是图鉴中已有的元素（直接引用其现有 ID，绝不重复创建），也可以是全新元素（调用 craft_elements 创建：id 仅小写英文字母、数字、下划线；name 用中文；description 一两句，只描述元素本身；类别优先复用已有，确属全新宏大主题才 create_category）。全新元素的 SVG 必须以「元素徽章」固定模板绘制：
+${ELEMENT_BADGE_SVG}
+${ELEMENT_BADGE_RULE}
+3. 若创建全新类别，其 icon 必须以「洛可可金饰」固定模板绘制：
+${CATEGORY_ICON_SVG}
+${CATEGORY_ICON_RULE}
+4. 必须调用 craft_recipe 绑定本次输入（秘宝 + 被精炼元素）与全部输出。`
+
+/** LLM 点化提示词（赤化/rubedo 秘宝专用，含玩家说服文本） */
+export const TRANSMUTE_SYSTEM_PROMPT = `你是一位炼金术点化审判官。玩家使用「赤化」秘宝，请求把一个元素点化为另一个指定的元素。
+要求：
+1. 玩家会在请求中指定目标元素（可能是图鉴中已有的元素，也可能是玩家设想的新元素）。请判断这次点化是否成立：转换是否有逻辑、神话或意象上的依据，玩家的说服是否有理有据、令人信服。
+2. 若批准：目标为已有元素时直接引用其现有 ID；目标为全新元素时调用 craft_elements 创建（id 仅小写英文字母、数字、下划线；name 用中文；description 一两句，只描述元素本身；类别优先复用已有，确属全新宏大主题才 create_category）。全新元素的 SVG 必须以「元素徽章」固定模板绘制：
+${ELEMENT_BADGE_SVG}
+${ELEMENT_BADGE_RULE}
+若创建全新类别，其 icon 必须以「洛可可金饰」固定模板绘制：
+${CATEGORY_ICON_SVG}
+${CATEGORY_ICON_RULE}
+必须调用 craft_recipe 绑定本次输入（秘宝 + 被点化元素）与输出。
+3. 若拒绝：不调用任何工具，直接回复拒绝的理由（一两句，说明为何点化不成立）。
+4. 审批要严格但公平：明显合理且有说服力的点化应当批准，牵强附会或毫无关联的点化应当拒绝。`
+
 /** 每种秘宝专属的反应提示词（key=秘宝 id；触发反应时使用对应秘宝的提示词） */
 export const RELIC_PROMPTS: Record<string, string> = {
   nigredo: DECOMPOSE_SYSTEM_PROMPT,
   albedo: EXTRACT_SYSTEM_PROMPT,
+  citrinitas: REFINE_SYSTEM_PROMPT,
+  rubedo: TRANSMUTE_SYSTEM_PROMPT,
 }
 
-/** 每种秘宝的反应动作名（key=秘宝 id；黑化=拆解、白化=净化） */
+/** 每种秘宝的反应动作名（key=秘宝 id；黑化=分解、白化=净化、黄化=精炼、赤化=点化） */
 export const RELIC_VERBS: Record<string, string> = {
   nigredo: '分解',
   albedo: '净化',
+  citrinitas: '精炼',
+  rubedo: '点化',
 }
 
 /** LLM 系统提示词（固定不变部分）。

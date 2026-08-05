@@ -22,6 +22,7 @@ import {
   RELIC_PROMPTS,
   RELIC_TEMPLATES,
   RELIC_VERBS,
+  TRANSMUTE_SYSTEM_PROMPT,
 } from '../constants'
 import { parseToolArguments, streamChatCompletion } from '../aiClient'
 import { sanitizeSVG, uuid } from '../utils'
@@ -45,6 +46,7 @@ export type CraftOutcome =
       /** 炼金术笔记（流式思考文本） */
       note?: string
     }
+  | { type: 'refused'; message: string }
   | { type: 'error'; message: string }
 
 interface StateRef {
@@ -643,9 +645,13 @@ export function useWorkspace() {
       onReasoning?: (text: string) => void,
       /** 传入秘宝专属提示词即为「拆解模式」（秘宝 + 元素 → 概念配方） */
       decomposePrompt?: string,
+      /** 传入玩家说服文本即为「点化模式」（赤化：玩家指定目标，AI 审批） */
+      transmuteRequest?: string,
     ): Promise<CraftOutcome> => {
       if (isCrafting) return { type: 'error', message: '正在合成中，请稍候' }
-      const isDecompose = !!decomposePrompt
+      const specialMode = !!decomposePrompt
+      const isTransmute = !!transmuteRequest
+      const isDecompose = specialMode && !isTransmute
       setIsCrafting(true)
       try {
         // 步骤 1：本地查重
@@ -659,7 +665,7 @@ export function useWorkspace() {
           return { type: 'error', message: isDecompose ? '尚未配置 AI，无法触发秘宝' : '尚未配置 AI，无法生成新合成配方' }
         }
 
-        const relicInput = isDecompose ? (inputA.relicId ? inputA : inputB) : null
+        const relicInput = specialMode ? (inputA.relicId ? inputA : inputB) : null
         const relicVerb = relicInput ? RELIC_VERBS[relicInput.relicId ?? ''] ?? '反应' : ''
         const messages: ChatMessage[] = isDecompose
           ? (() => {
@@ -674,9 +680,17 @@ export function useWorkspace() {
                 },
               ]
             })()
-          : buildMessages(inputA, inputB)
-        onMessage(isDecompose ? `${relicInput!.name}${relicVerb}中...` : '正在解析元素...')
-        onMessage(isDecompose ? `${relicVerb}进行中...` : '正在搅拌中...')
+          : isTransmute
+            ? [
+                { role: 'system', content: decomposePrompt! },
+                {
+                  role: 'user',
+                  content: `【秘宝】${relicInput!.name}（ID: ${relicInput!.id}）\n【待点化元素】${inputA.relicId ? inputB.name : inputA.name}（ID: ${inputA.relicId ? inputB.id : inputA.id}）\n\n【玩家的点化请求】\n${transmuteRequest}`,
+                },
+              ]
+            : buildMessages(inputA, inputB)
+        onMessage(specialMode ? `${relicInput!.name}${relicVerb}中...` : '正在解析元素...')
+        onMessage(specialMode ? `${relicVerb}进行中...` : '正在搅拌中...')
 
         // 多轮工具调用中累积的状态
         const newElements: Element[] = []
@@ -696,7 +710,7 @@ export function useWorkspace() {
             (text) => {
               craftNote += text
               onStream?.(text)
-              onMessage(isDecompose ? `${relicVerb}进行中...` : '正在搅拌中...')
+              onMessage(specialMode ? `${relicVerb}进行中...` : '正在搅拌中...')
             },
             (text) => onReasoning?.(text),
           )
@@ -713,6 +727,14 @@ export function useWorkspace() {
           // 模型未调用任何工具 → 终止
           if (toolCalls.length === 0) {
             if (recipeOutputIds.length === 0) {
+              if (isTransmute) {
+                // 点化被拒绝：把模型的回复作为拒绝理由返回
+                const reason =
+                  typeof result.message.content === 'string' && result.message.content.trim()
+                    ? result.message.content.trim()
+                    : '贤者拒绝了这次点化'
+                return { type: 'refused', message: reason }
+              }
               return { type: 'error', message: '模型未调用合成工具，请确保 API 支持 Function Calling' }
             }
             break
@@ -959,7 +981,7 @@ export function useWorkspace() {
 
         // 秘宝奖励：仅合成模式，每合成出 10 个新元素，奖励 1 个黑化
         let relicReward = 0
-        if (!isDecompose && newElements.length > 0) {
+        if (!specialMode && newElements.length > 0) {
           const prevCount = stateRef.current.newElementCount
           const nextCount = prevCount + newElements.length
           const awarded =
@@ -971,7 +993,7 @@ export function useWorkspace() {
           setNewElementCount(nextCount)
         }
 
-        onMessage(isDecompose ? `${relicVerb}完成...` : '凝固新元素...')
+        onMessage(specialMode ? `${relicVerb}完成...` : '凝固新元素...')
         return {
           type: 'ai',
           added,
@@ -999,6 +1021,34 @@ export function useWorkspace() {
     ): Promise<CraftOutcome> => {
       const prompt = RELIC_PROMPTS[relic.relicId ?? ''] ?? DECOMPOSE_SYSTEM_PROMPT
       return craft(relic, element, aiConfig, onMessage, onStream, undefined, prompt)
+    },
+    [craft],
+  )
+
+  /** 赤化点化：玩家提供说服文本，AI 审批是否把元素转换为指定目标（批准才消耗秘宝） */
+  const transmutePoint = useCallback(
+    async (
+      relic: Element,
+      element: Element,
+      request: string,
+      aiConfig: AIConfig | null,
+      onMessage: (msg: string) => void,
+      onStream?: (text: string) => void,
+    ): Promise<CraftOutcome> => {
+      if (!relic.relicId) return { type: 'error', message: '这不是秘宝' }
+      if (element.relicId) return { type: 'error', message: '秘宝只能与元素结合' }
+      const text = request.trim()
+      if (!text) return { type: 'error', message: '请先写下你的点化请求' }
+      return craft(
+        relic,
+        element,
+        aiConfig,
+        onMessage,
+        onStream,
+        undefined,
+        TRANSMUTE_SYSTEM_PROMPT,
+        text,
+      )
     },
     [craft],
   )
@@ -1397,6 +1447,7 @@ export function useWorkspace() {
     isCrafting,
     craft,
     decomposeElement,
+    transmutePoint,
     exportWorkspace,
     importWorkspace,
     getExportFilename,
