@@ -125,6 +125,8 @@ export function ElementDetailModal({
   onDeployRelic?: (relicId: string) => void
 }) {
   const [viewElement, setViewElement] = useState(element)
+  /** 查看大图模式 */
+  const [showBigIcon, setShowBigIcon] = useState(false)
   useEffect(() => setViewElement(element), [element])
 
   const recipesAsOutput = recipes.filter((r) => r.outputs.includes(viewElement.id))
@@ -156,7 +158,14 @@ export function ElementDetailModal({
         <div className="alchemy-scroll max-h-[70vh] overflow-y-auto p-5">
           {/* 头部：大图标 + 名称 + ID + 类别 */}
           <div className="flex items-center gap-4 pb-3">
-            <CodexIcon svg={viewElement.svg} size={72} />
+            <button
+              type="button"
+              onClick={() => setShowBigIcon(true)}
+              title="点击查看大图"
+              className="shrink-0 rounded-xl outline-none transition-transform hover:scale-105 active:scale-95"
+            >
+              <CodexIcon svg={viewElement.svg} size={72} />
+            </button>
             <div className="min-w-0">
               <h2 className="font-serif text-2xl font-bold text-amber-950">{viewElement.name}</h2>
               <p className="font-mono text-xs text-amber-700">{viewElement.id}</p>
@@ -239,6 +248,35 @@ export function ElementDetailModal({
           </button>
         </div>
       </div>
+
+      {/* 大图模式 */}
+      {showBigIcon && (
+        <div
+          className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-5 bg-black/85 p-6 backdrop-blur-sm"
+          onClick={() => setShowBigIcon(false)}
+        >
+          <span
+            className="pointer-events-none flex h-72 w-72 items-center justify-center rounded-3xl border-2 border-amber-700/50 bg-gradient-to-b from-[#3a2512]/95 to-[#241608]/95 shadow-[0_0_60px_rgba(251,191,36,0.25)] sm:h-80 sm:w-80"
+          >
+            <CodexIcon svg={viewElement.svg} size={256} />
+          </span>
+          <div className="pointer-events-none text-center">
+            <p className="font-serif text-2xl font-bold text-amber-100">{viewElement.name}</p>
+            <p className="mt-1 font-mono text-xs text-amber-200/60">{viewElement.id}</p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowBigIcon(false)
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-700/50 bg-amber-900/60 text-amber-100 transition-colors hover:bg-amber-900/90"
+            aria-label="关闭大图"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }
