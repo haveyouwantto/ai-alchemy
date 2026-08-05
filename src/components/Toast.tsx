@@ -40,14 +40,14 @@ function ToastItem({ toast }: { toast: ToastData }) {
   return (
     <div
       style={style}
-      className="pointer-events-none relative w-72 overflow-hidden rounded-2xl border border-amber-400/40 bg-gradient-to-b from-indigo-950/95 to-purple-950/95 p-4 shadow-2xl shadow-black/40"
+      className="pointer-events-none relative w-72 overflow-hidden rounded-2xl border-2 border-amber-800/50 bg-gradient-to-b from-stone-900/95 to-stone-950/95 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)]"
     >
       <div className="flex items-start gap-3">
         <span className="text-2xl">{isSuccess ? '✨' : '⚠️'}</span>
         <div>
           <p className="font-bold text-amber-200">{toast.title}</p>
           {!toast.hideObtainText && toast.elements && toast.elements.length > 0 && (
-            <p className="mt-0.5 text-sm text-purple-200">
+            <p className="mt-0.5 text-sm text-amber-100">
               获得：
               <span className="font-semibold text-emerald-300">
                 {toast.elements.map((e) => e.name).join('、')}
@@ -55,7 +55,7 @@ function ToastItem({ toast }: { toast: ToastData }) {
             </p>
           )}
           {toast.content && (
-            <p className="mt-1 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-purple-300/90">
+            <p className="mt-1 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-amber-200/80">
               {toast.content}
             </p>
           )}

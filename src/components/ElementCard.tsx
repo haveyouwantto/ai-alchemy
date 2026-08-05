@@ -58,10 +58,11 @@ function ElementCardInner({
       {...(listeners ?? {})}
       className={[
         'relative flex flex-col items-center justify-center rounded-2xl border-2 transition-all duration-150',
-        'bg-gradient-to-br from-purple-900/80 via-indigo-900/70 to-fuchsia-900/80 shadow-lg shadow-purple-950/50 backdrop-blur-sm',
+        'bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 shadow-lg shadow-black/50',
+        'ring-1 ring-inset ring-amber-900/30',
         selected
           ? 'border-amber-400 ring-2 ring-amber-400/50'
-          : 'border-purple-500/40',
+          : 'border-amber-900/60',
         // 可拖拽时禁用触摸默认行为（页面滚动/缩放），否则移动端拖不动
         listeners ? 'cursor-grab dnd-card active:cursor-grabbing' : 'cursor-pointer',
         isDragging ? 'opacity-40 scale-105 ring-4 ring-amber-400/60 z-50' : '',
@@ -80,21 +81,21 @@ function ElementCardInner({
         />
       ) : (
         <div
-          className="flex items-center justify-center rounded-full bg-purple-700/50"
+          className="flex items-center justify-center rounded-full bg-amber-900/40"
           style={{ width: size * 0.5, height: size * 0.5 }}
         >
-          <span className="text-2xl text-purple-200">?</span>
+          <span className="text-2xl text-amber-200">?</span>
         </div>
       )}
       <span
-        className="mt-1 truncate text-center font-medium text-purple-100"
+        className="mt-1 truncate text-center font-serif font-medium text-amber-100"
         style={{ fontSize: size * 0.13, maxWidth: size * 0.9 }}
         title={element.name}
       >
         {element.name}
       </span>
       <span
-        className="truncate text-center font-mono text-purple-400/80"
+        className="truncate text-center font-mono text-amber-200/60"
         style={{ fontSize: size * 0.08, maxWidth: size * 0.85 }}
         title={element.id}
       >

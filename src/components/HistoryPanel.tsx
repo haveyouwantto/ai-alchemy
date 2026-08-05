@@ -183,7 +183,7 @@ export function HistoryPanel({ history, recipes, elements, open, onClose, onClea
                             <span
                               className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                                 h.source === 'ai'
-                                  ? 'bg-purple-100 text-purple-800'
+                                  ? 'bg-amber-800 text-amber-100'
                                   : 'bg-amber-200 text-amber-900'
                               }`}
                             >

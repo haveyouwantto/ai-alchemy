@@ -86,12 +86,12 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-purple-500/30 bg-gradient-to-b from-indigo-950 to-purple-950 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-purple-500/20 px-4 py-3">
-          <h2 className="text-lg font-bold text-amber-300">⚙️ AI 设置</h2>
+      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-amber-900/50 bg-gradient-to-b from-stone-900 to-stone-950 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
+        <div className="flex items-center justify-between border-b border-amber-900/40 px-4 py-3">
+          <h2 className="font-serif text-lg font-bold text-amber-300">⚙️ AI 设置</h2>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-800/60 text-purple-200 transition-colors hover:bg-purple-700"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-stone-800 text-amber-100 transition-colors hover:bg-stone-700"
             aria-label="关闭"
           >
             ✕
@@ -100,7 +100,7 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
         <div className="alchemy-scroll max-h-[80vh] overflow-y-auto">
           <div className="flex flex-col gap-4 p-5">
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-purple-200">API Endpoint（Base URL）</label>
+              <label className="text-sm font-medium text-amber-100">API Endpoint（Base URL）</label>
               <input
                 value={baseURL}
                 onChange={(e) => {
@@ -108,15 +108,15 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
                   setModels([])
                 }}
                 placeholder="https://api.openai.com/v1"
-                className="rounded-lg border border-purple-500/30 bg-purple-900/40 px-3 py-2 text-sm text-purple-100 placeholder-purple-400/60 outline-none focus:border-amber-400"
+                className="rounded-lg border border-amber-900/50 bg-stone-950/80 px-3 py-2 text-sm text-amber-100 placeholder-amber-200/40 outline-none focus:border-amber-400"
               />
-              <p className="text-xs text-purple-400">
+              <p className="text-xs text-amber-200/60">
                 支持 OpenAI 官方或任何 OpenAI 兼容 API（如中转服务）
               </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-purple-200">API Key</label>
+              <label className="text-sm font-medium text-amber-100">API Key</label>
               <input
                 type="password"
                 value={apiKey}
@@ -125,12 +125,12 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
                   setModels([])
                 }}
                 placeholder="sk-..."
-                className="rounded-lg border border-purple-500/30 bg-purple-900/40 px-3 py-2 text-sm text-purple-100 placeholder-purple-400/60 outline-none focus:border-amber-400"
+                className="rounded-lg border border-amber-900/50 bg-stone-950/80 px-3 py-2 text-sm text-amber-100 placeholder-amber-200/40 outline-none focus:border-amber-400"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-purple-200">模型（Model）</label>
+              <label className="text-sm font-medium text-amber-100">模型（Model）</label>
               <div className="relative">
                 <input
                   value={model}
@@ -138,14 +138,14 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
                   onFocus={() => setShowDropdown(true)}
                   onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
                   placeholder="gpt-4o-mini"
-                  className="w-full rounded-lg border border-purple-500/30 bg-purple-900/40 px-3 py-2 text-sm text-purple-100 placeholder-purple-400/60 outline-none focus:border-amber-400"
+                  className="w-full rounded-lg border border-amber-900/50 bg-stone-950/80 px-3 py-2 text-sm text-amber-100 placeholder-amber-200/40 outline-none focus:border-amber-400"
                 />
                 {showDropdown && (
-                  <div className="alchemy-scroll absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-xl border border-purple-500/40 bg-purple-950/95 p-1.5 shadow-2xl backdrop-blur">
+                  <div className="alchemy-scroll absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-xl border border-amber-900/60 bg-stone-950/95 p-1.5 shadow-2xl backdrop-blur">
                     <button
                       type="button"
                       onMouseDown={handleFetchModels}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-amber-300 transition-colors hover:bg-purple-800/70"
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-amber-300 transition-colors hover:bg-stone-800/80"
                     >
                       <span className="flex items-center gap-2">
                         <span className="text-base">🔄</span>
@@ -156,21 +156,21 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
                       )}
                     </button>
                     {fetchError && <p className="px-3 py-1.5 text-xs text-red-400">{fetchError}</p>}
-                    <div className="my-1 border-t border-purple-500/20" />
+                    <div className="my-1 border-t border-amber-900/40" />
 
                     {apiOnly.length > 0 && (
                       <>
-                        <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-purple-400">
+                        <p className="px-3 py-1 font-serif text-[11px] font-semibold uppercase tracking-wide text-amber-200/60">
                           从 API 获取
                         </p>
                         {apiOnly.map((m) => (
                           <ModelOption key={m} value={m} selected={m === model} onSelect={(v) => { setModel(v); setShowDropdown(false) }} />
                         ))}
-                        <div className="my-1 border-t border-purple-500/20" />
+                        <div className="my-1 border-t border-amber-900/40" />
                       </>
                     )}
 
-                    <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-purple-400">
+                    <p className="px-3 py-1 font-serif text-[11px] font-semibold uppercase tracking-wide text-amber-200/60">
                       常用模型
                     </p>
                     {common.map((m) => (
@@ -179,7 +179,7 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
                   </div>
                 )}
               </div>
-              <p className="text-xs text-purple-400">
+              <p className="text-xs text-amber-200/60">
                 可手动输入，或点击输入框后「自动获取」从 API 拉取完整模型列表
               </p>
             </div>
@@ -214,7 +214,7 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
       {showClearConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowClearConfirm(false)} />
-          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-red-500/50 bg-gradient-to-b from-red-950 to-purple-950 p-5 shadow-2xl">
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-red-500/50 bg-gradient-to-b from-red-950 to-stone-950 p-5 shadow-2xl">
             <div className="flex items-center gap-3">
               <span className="text-4xl">⚠️</span>
               <div>
@@ -243,7 +243,7 @@ export function SettingsModal({ open, config, onSave, onClose, onClearAllData }:
               </button>
               <button
                 onClick={() => setShowClearConfirm(false)}
-                className="rounded-xl border border-purple-500/40 bg-purple-900/50 px-4 py-2.5 font-semibold text-purple-200 transition-colors hover:bg-purple-800"
+                className="rounded-xl border border-amber-900/50 bg-stone-800/70 px-4 py-2.5 font-semibold text-amber-100 transition-colors hover:bg-stone-700/80"
               >
                 取消
               </button>
@@ -269,8 +269,8 @@ function ModelOption({
     <button
       type="button"
       onMouseDown={() => onSelect(value)}
-      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-purple-800/70 ${
-        selected ? 'bg-purple-800/50 font-semibold text-amber-300' : 'text-purple-100'
+      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-stone-800/80 ${
+        selected ? 'bg-amber-900/30 font-semibold text-amber-300' : 'text-amber-100'
       }`}
     >
       <span className="truncate">{value}</span>

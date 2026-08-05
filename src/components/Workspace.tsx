@@ -423,7 +423,7 @@ export function Workspace({
   }, [dragOverId])
 
   return (
-    <div ref={containerRef} className="relative flex-1 overflow-hidden">
+    <div ref={containerRef} className="workbench relative flex-1 overflow-hidden">
       <DndContext
         sensors={sensors}
         modifiers={[clampToWorkspace]}
@@ -477,8 +477,8 @@ export function Workspace({
             isOverTrash
               ? 'scale-110 border-red-400 bg-red-900/80 shadow-lg shadow-red-500/30'
               : isDraggingAny
-                ? 'border-amber-400/60 bg-purple-900/70'
-                : 'border-purple-500/25 bg-purple-900/40'
+                ? 'border-amber-400/60 bg-stone-800/90'
+                : 'border-amber-900/50 bg-stone-900/80'
           }`}
           title="拖拽元素到垃圾桶删除"
         >
@@ -489,11 +489,11 @@ export function Workspace({
         {elements.length === 0 && (
           <button
             onClick={onOpenLibrary}
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-dashed border-purple-500/40 bg-purple-900/30 px-8 py-10 text-center transition-colors hover:border-amber-400/60 hover:bg-purple-800/40"
+            className="parchment-panel absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-dashed border-amber-700/50 px-8 py-10 text-center text-amber-900 shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-colors hover:border-amber-500/80 hover:brightness-105"
           >
             <span className="text-4xl">🧪</span>
-            <p className="mt-2 text-purple-200">工作区空空如也</p>
-            <p className="mt-1 text-sm text-purple-400">点击打开元素列表添加元素</p>
+            <p className="mt-2 font-serif font-bold">工作区空空如也</p>
+            <p className="mt-1 text-sm text-amber-800/80">点击打开元素列表添加元素</p>
           </button>
         )}
       </DndContext>

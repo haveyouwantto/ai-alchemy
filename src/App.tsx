@@ -298,8 +298,8 @@ export default function App() {
         disabled
           ? 'cursor-not-allowed opacity-40'
           : active
-            ? 'bg-amber-500/90 text-amber-950 font-bold'
-            : 'bg-purple-800/50 text-purple-200 hover:bg-purple-700/70 hover:text-purple-50',
+            ? 'border border-amber-400 bg-gradient-to-b from-amber-400 to-amber-500 font-bold text-amber-950 shadow-[0_0_14px_rgba(251,191,36,0.45)]'
+            : 'border border-amber-900/50 bg-stone-800/70 text-amber-100 hover:border-amber-700/70 hover:bg-stone-700/80 hover:text-amber-50',
       ].join(' ')}
     >
       {children}
@@ -307,14 +307,15 @@ export default function App() {
   )
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#12081f] text-purple-50">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#160e08] text-amber-100">
       {/* 顶部状态栏 */}
-      <div className="border-b border-purple-500/20 bg-gradient-to-r from-purple-950/90 to-indigo-950/90">
+      <div className="border-b-2 border-amber-900/40 bg-gradient-to-r from-stone-950 via-stone-900 to-stone-950 shadow-[0_1px_0_rgba(255,200,100,0.08)]">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
-          <h1 className="mr-auto flex items-center gap-2 text-base font-bold text-amber-300 sm:text-lg">
+          <h1 className="mr-auto flex items-center gap-2 font-serif text-base font-bold tracking-wide text-amber-300 sm:text-lg">
             <span className="text-2xl">⚗️</span>
             <span className="hidden sm:inline">AI 炼金术工坊</span>
             <span className="sm:hidden">炼金工坊</span>
+            <span className="text-lg opacity-80" title="油灯长明">🪔</span>
           </h1>
 
           {/* 功能按钮 */}
@@ -374,7 +375,7 @@ export default function App() {
       />
 
       {/* 底部提示条 */}
-      <div className="border-t border-purple-500/20 bg-gradient-to-r from-indigo-950/90 to-purple-950/90 px-3 py-1.5 text-center text-xs text-purple-400">
+      <div className="border-t-2 border-amber-900/40 bg-gradient-to-r from-stone-950 via-stone-900 to-stone-950 px-3 py-1.5 text-center text-xs text-amber-200/70">
         <span className="hidden sm:inline">拖拽卡片到另一张上合成 · 拖到空白可移动 · 双击复制 · Ctrl+K 图鉴 · 选中后 Delete 删除</span>
         <span className="sm:hidden">拖拽卡片合成或移动 · 长按拖拽</span>
       </div>

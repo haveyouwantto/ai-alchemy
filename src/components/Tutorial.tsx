@@ -17,7 +17,7 @@ export function Tutorial() {
       <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
       <div className="relative z-10 flex flex-col items-center gap-3 text-center">
         <div className="animate-arrow-bounce text-6xl drop-shadow-lg">⬇️</div>
-        <p className="rounded-2xl border border-amber-400/50 bg-purple-950/90 px-6 py-4 text-lg font-bold text-amber-200 shadow-2xl backdrop-blur">
+        <p className="rounded-2xl border-2 border-amber-800/60 bg-stone-950/90 px-6 py-4 font-serif text-lg font-bold text-amber-200 shadow-[0_0_30px_rgba(255,176,32,0.25)] backdrop-blur">
           拖拽一张卡片到另一张上即可炼金
         </p>
       </div>
