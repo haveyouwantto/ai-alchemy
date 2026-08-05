@@ -152,7 +152,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
       const radius = Math.sqrt(i + 1) * 58
       return { ...n, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
     })
-    return { nodes, mstNodes, mstLinks }
+    return { nodes, mstNodes, fullLinks, mstLinks }
   }, [elements, recipes])
 
   const links = graphData.mstLinks
@@ -199,6 +199,19 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     }
     return set
   }, [selected, links])
+
+  // 选中元素的全部关系（含不在最小生成树里的边，用于虚线展示）
+  const relatedIds = useMemo(() => {
+    const set = new Set<string>()
+    if (!selected) return set
+    for (const l of graphData.fullLinks) {
+      const s = String(l.source)
+      const t = String(l.target)
+      if (s === selected) set.add(t)
+      if (t === selected) set.add(s)
+    }
+    return set
+  }, [selected, graphData.fullLinks])
 
   const drawNode: NonNullable<ForceGraphProps<Element, { source: string; target: string }>['nodeCanvasObject']> = (
     node,
@@ -319,6 +332,26 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
               nodePointerAreaPaint={nodePointerAreaPaint}
               onNodeClick={(node) => setSelected(node.id === selected ? null : String(node.id))}
               onBackgroundClick={() => setSelected(null)}
+              onRenderFramePost={(ctx, globalScale) => {
+                // 选中元素：把与它相关的完整关系用虚线叠画（纯视觉，不影响力）。
+                // ctx 自带 DPR + 缩放平移变换，节点/连线都按图坐标绘制，这里同样沿用。
+                if (!selected) return
+                const sel = nodes.find((n) => String(n.id) === selected)
+                if (!sel || sel.x == null || sel.y == null) return
+                ctx.save()
+                ctx.setLineDash([6 / globalScale, 4 / globalScale])
+                ctx.strokeStyle = 'rgba(217,119,6,0.75)'
+                ctx.lineWidth = 1.5 / globalScale
+                for (const rid of relatedIds) {
+                  const n = nodes.find((nd) => String(nd.id) === rid)
+                  if (!n || n.x == null || n.y == null || n === sel) continue
+                  ctx.beginPath()
+                  ctx.moveTo(sel.x, sel.y)
+                  ctx.lineTo(n.x, n.y)
+                  ctx.stroke()
+                }
+                ctx.restore()
+              }}
               linkColor={linkColor as never}
               linkWidth={linkWidth as never}
               linkDirectionalArrowLength={4}
@@ -372,7 +405,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
 
         {/* 底部提示 */}
         <div className="border-t border-amber-900/30 bg-[#7a4a20]/95 px-4 py-2 text-xs text-amber-100/80">
-          展示元素参与合成的最小生成树骨架 · 滚轮缩放 · 拖动平移 · 点击元素高亮
+          实线 = 最小生成树骨架 · 点击元素后虚线 = 其全部关系（不影响布局）· 滚轮缩放 · 拖动平移
         </div>
       </div>
 
