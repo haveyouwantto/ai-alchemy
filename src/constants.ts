@@ -23,7 +23,7 @@ export const RELIC_TEMPLATES: Element[] = [
   {
     id: 'relic_nigredo',
     name: '黑化',
-    description: '与一个元素融合后，将其拆解为组成它的 1~3 个概念元素。消耗品，用一次少一个。',
+    description: '漆黑之蚀，炼金四阶段之始。触之令万物析出本相——将一个元素分解为构成它的 1~3 个概念。消耗品，用一次少一个。',
     categoryId: 'relics',
     svg: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="relicGlow" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="#a855f7" stop-opacity="0.55"/><stop offset="100%" stop-color="#3b0764" stop-opacity="0"/></radialGradient><linearGradient id="relicPlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2e1065"/><stop offset="55%" stop-color="#1e1b4b"/><stop offset="100%" stop-color="#0f0a1e"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="url(#relicGlow)"/><circle cx="50" cy="50" r="37" fill="url(#relicPlate)"/><circle cx="50" cy="50" r="37" fill="none" stroke="#c4b5fd" stroke-opacity="0.3" stroke-width="1.5"/><ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.1" transform="rotate(-28 38 33)"/><circle cx="50" cy="51" r="16" fill="#0d0716" stroke="#e9d5ff" stroke-width="2.5"/><path d="M42 44 L46 51 L42 58 L48 62" stroke="#e9d5ff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M54 40 L58 47 L52 53 L56 59" stroke="#d8b4fe" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     createdAt: 0,
@@ -33,7 +33,7 @@ export const RELIC_TEMPLATES: Element[] = [
   {
     id: 'relic_albedo',
     name: '白化',
-    description: '与一个元素融合后，将其提取为更大更抽象的概念。消耗品，用一次少一个。',
+    description: '净白之辉，炼金四阶段之次。拂去尘杂，令本质升华——将一个元素提取为更宏大、更抽象的概念。消耗品，用一次少一个。',
     categoryId: 'relics',
     svg: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="albedoGlow" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="#e2e8f0" stop-opacity="0.5"/><stop offset="100%" stop-color="#64748b" stop-opacity="0"/></radialGradient><linearGradient id="albedoPlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#475569"/><stop offset="55%" stop-color="#334155"/><stop offset="100%" stop-color="#0f172a"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="url(#albedoGlow)"/><circle cx="50" cy="50" r="37" fill="url(#albedoPlate)"/><circle cx="50" cy="50" r="37" fill="none" stroke="#f1f5f9" stroke-opacity="0.3" stroke-width="1.5"/><ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.1" transform="rotate(-28 38 33)"/><circle cx="50" cy="57" r="12" fill="#f8fafc"/><path d="M50 17 C53 24 54 27 54 31" stroke="#f8fafc" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M50 30 C44 33 42 37 43 41 C48 39 50 37 50 34" stroke="#e2e8f0" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M50 30 C56 33 58 37 57 41 C52 39 50 37 50 34" stroke="#e2e8f0" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>',
     createdAt: 0,
@@ -45,11 +45,14 @@ export const RELIC_TEMPLATES: Element[] = [
 /** 秘宝初始库存 */
 export const INITIAL_RELIC_COUNTS: Record<string, number> = {
   nigredo: 5,
-  albedo: 5,
+  albedo: 3,
 }
 
 /** 每合成出多少个新元素，奖励 1 个「黑化」 */
 export const RELIC_REWARD_NEW_ELEMENTS = 10
+
+/** 每解锁多少个元素，奖励 1 个「白化」 */
+export const RELIC_ALBEDO_UNLOCK_INTERVAL = 20
 
 /** 元素徽章 SVG 模板（合成与拆解共用） */
 const ELEMENT_BADGE_SVG = `    <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
@@ -94,7 +97,7 @@ const CATEGORY_ICON_RULE =
   '保持浅色底 + 双层框；四角四边花纹贴合类别主题，繁复精致、对称协调；中央主体大而粗（约 34~66 区域），缩小到 14px 仍清晰；配色按类别主题自定，渐变 id 唯一'
 
 /** LLM 拆解提示词（黑化/nigredo 秘宝专用） */
-export const DECOMPOSE_SYSTEM_PROMPT = `你是一个炼金术概念拆解器。玩家使用「黑化」秘宝与一个元素融合，把该元素拆解为组成它的 1~3 个概念元素。
+export const DECOMPOSE_SYSTEM_PROMPT = `你是一个炼金术概念分解师。玩家使用「黑化」秘宝与一个元素融合，把该元素分解为组成它的 1~3 个概念元素。
 要求：
 1. 产出 1~3 个概念元素，尽量多拆：它们是构成该元素的核心概念（构成要素、组成部分、直接支撑它的本质概念），必须同源同层、彼此并列，严禁越级生成更宏大或更高层的事物。
 2. 概念元素可以是图鉴中已有的元素（直接引用其现有 ID，绝不重复创建），也可以是全新元素（调用 craft_elements 创建：id 仅小写英文字母、数字、下划线；name 用中文；description 一两句，只描述元素本身；类别优先复用已有，确属全新宏大主题才 create_category）。全新元素的 SVG 必须以「元素徽章」固定模板绘制：
@@ -103,7 +106,7 @@ ${ELEMENT_BADGE_RULE}
 3. 若创建全新类别，其 icon 必须以「洛可可金饰」固定模板绘制：
 ${CATEGORY_ICON_SVG}
 ${CATEGORY_ICON_RULE}
-4. 必须调用 craft_recipe 绑定本次输入（秘宝 + 被拆解元素）与全部输出。
+4. 必须调用 craft_recipe 绑定本次输入（秘宝 + 被分解元素）与全部输出。
 5. 至少 1 个概念元素，最多 3 个。`
 
 /** LLM 提取提示词（白化/albedo 秘宝专用） */
@@ -126,7 +129,7 @@ export const RELIC_PROMPTS: Record<string, string> = {
 
 /** 每种秘宝的反应动作名（key=秘宝 id；黑化=拆解、白化=净化） */
 export const RELIC_VERBS: Record<string, string> = {
-  nigredo: '拆解',
+  nigredo: '分解',
   albedo: '净化',
 }
 

@@ -17,6 +17,7 @@ import { DEFAULT_CATEGORY_ID, FUNCTIONS, INITIAL_ELEMENTS, INITIAL_WORKSPACE, SY
 import {
   DECOMPOSE_SYSTEM_PROMPT,
   INITIAL_RELIC_COUNTS,
+  RELIC_ALBEDO_UNLOCK_INTERVAL,
   RELIC_REWARD_NEW_ELEMENTS,
   RELIC_PROMPTS,
   RELIC_TEMPLATES,
@@ -211,6 +212,9 @@ function loadStoredWorkspace(): StoredWorkspace {
                 nigredo:
                   INITIAL_RELIC_COUNTS.nigredo +
                   Math.floor(unlockedElements.length / RELIC_REWARD_NEW_ELEMENTS),
+                albedo:
+                  INITIAL_RELIC_COUNTS.albedo +
+                  Math.floor(unlockedElements.length / RELIC_ALBEDO_UNLOCK_INTERVAL),
               }
             }
             // 补齐缺失秘宝的初始数量（如新加入的白化）
@@ -488,14 +492,21 @@ export function useWorkspace() {
     setCraftHistory([])
   }, [])
 
-  /** 将一批元素注册为「已解锁」（图鉴数据；已存在则跳过） */
+  /** 将一批元素注册为「已解锁」（图鉴数据；已存在则跳过）；每解锁 20 个奖励 1 个白化 */
   const unlockElements = useCallback((items: Element[]) => {
     if (items.length === 0) return
-    setUnlockedElements((prev) => {
-      const existing = new Set(prev.map((e) => e.id))
-      const fresh = items.filter((e) => !existing.has(e.id))
-      return fresh.length > 0 ? [...prev, ...fresh] : prev
-    })
+    const prev = stateRef.current.unlockedElements
+    const existing = new Set(prev.map((e) => e.id))
+    const fresh = items.filter((e) => !existing.has(e.id))
+    if (fresh.length === 0) return
+    const next = [...prev, ...fresh]
+    const awarded =
+      Math.floor(next.length / RELIC_ALBEDO_UNLOCK_INTERVAL) -
+      Math.floor(prev.length / RELIC_ALBEDO_UNLOCK_INTERVAL)
+    if (awarded > 0) {
+      setRelics((r) => ({ ...r, albedo: (r.albedo ?? 0) + awarded }))
+    }
+    setUnlockedElements(next)
   }, [])
 
   /** 将元素的使用频次 +delta */
