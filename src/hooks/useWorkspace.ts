@@ -565,38 +565,37 @@ export function useWorkspace() {
     [bumpUseCount, consumeInputs, unlockElements, addCraftHistoryEntry],
   )
 
+  /** 构建世界上下文：类别清单 + 元素图鉴（含秘宝）——合成与秘宝反应共用 */
+  const buildWorldContext = useCallback((): string => {
+    const categoryList = stateRef.current.categories
+      .map((c) => `${c.name} (ID: ${c.id})：${c.description}`)
+      .join('；')
+    const elementsByCategory = stateRef.current.categories
+      .map((c) => {
+        const items = stateRef.current.unlockedElements
+          .filter((e) => e.categoryId === c.id)
+          .map((e) => `${e.name} (ID: ${e.id})`)
+        return items.length > 0 ? `「${c.name}」：${items.join('、')}` : null
+      })
+      .filter((s): s is string => !!s)
+    // 未归入任何已知类别的元素兜底（防止遗漏）
+    const knownCategoryIds = new Set(stateRef.current.categories.map((c) => c.id))
+    const uncategorized = stateRef.current.unlockedElements
+      .filter((e) => !knownCategoryIds.has(e.categoryId))
+      .map((e) => `${e.name} (ID: ${e.id})`)
+    if (uncategorized.length > 0) {
+      elementsByCategory.push(`「未归类」：${uncategorized.join('、')}`)
+    }
+    // 秘宝：与元素同格式发给 AI（可被配方/反应引用）
+    if (RELIC_TEMPLATES.length > 0) {
+      elementsByCategory.push(`「秘宝」：${RELIC_TEMPLATES.map((r) => `${r.name} (ID: ${r.id})`).join('、')}`)
+    }
+    return `【元素类别】\n${categoryList}\n\n【元素图鉴】\n${elementsByCategory.join('\n')}`
+  }, [])
+
   /** 构建 LLM 上下文消息 */
   const buildMessages = useCallback(
     (inputA: Element, inputB: Element): ChatMessage[] => {
-      // 类别：完整发送（ID、名称、描述）
-      const categoryList = stateRef.current.categories
-        .map((c) => `${c.name} (ID: ${c.id})：${c.description}`)
-        .join('；')
-      // 元素：按类别嵌套分组，仅含名称与 ID（不重复类别字段，不发完整描述以免上下文过长）
-      const categories = stateRef.current.categories
-      const elementsByCategory = categories
-        .map((c) => {
-          const items = stateRef.current.unlockedElements
-            .filter((e) => e.categoryId === c.id)
-            .map((e) => `${e.name} (ID: ${e.id})`)
-          return items.length > 0 ? `「${c.name}」：${items.join('、')}` : null
-        })
-        .filter((s): s is string => !!s)
-      // 未归入任何已知类别的元素兜底（防止遗漏）
-      const knownCategoryIds = new Set(categories.map((c) => c.id))
-      const uncategorized = stateRef.current.unlockedElements
-        .filter((e) => !knownCategoryIds.has(e.categoryId))
-        .map((e) => `${e.name} (ID: ${e.id})`)
-      if (uncategorized.length > 0) {
-        elementsByCategory.push(`「未归类」：${uncategorized.join('、')}`)
-      }
-      // 秘宝：与元素同格式发给 AI（可被配方/拆解引用）
-      if (RELIC_TEMPLATES.length > 0) {
-        elementsByCategory.push(
-          `「秘宝」：${RELIC_TEMPLATES.map((r) => `${r.name} (ID: ${r.id})`).join('、')}`,
-        )
-      }
-      const elementList = elementsByCategory.join('\n')
       const relatedRecipes = stateRef.current.recipes.filter(
         (r) =>
           (r.inputA === inputA.id && r.inputB === inputB.id) ||
@@ -619,14 +618,14 @@ export function useWorkspace() {
       const systemPrompt = SYSTEM_PROMPT_TEMPLATE
 
       // user：本次合成全部动态数据（类别清单 / 元素图鉴 / 合成对象 / 相关配方）
-      const userPrompt = `【元素类别】\n${categoryList}\n\n【元素图鉴】\n${elementList}\n\n【本次合成对象】\n${inputA.name}（ID: ${inputA.id}，类别：${catNameOf(inputA.categoryId)}）${inputDescA}\n${inputB.name}（ID: ${inputB.id}，类别：${catNameOf(inputB.categoryId)}）${inputDescB}\n\n【相关已有配方】\n${recipeDesc}\n\n请现在合成 ${inputA.name} 和 ${inputB.name}，并调用相应工具。`
+      const userPrompt = `${buildWorldContext()}\n\n【本次合成对象】\n${inputA.name}（ID: ${inputA.id}，类别：${catNameOf(inputA.categoryId)}）${inputDescA}\n${inputB.name}（ID: ${inputB.id}，类别：${catNameOf(inputB.categoryId)}）${inputDescB}\n\n【相关已有配方】\n${recipeDesc}\n\n请现在合成 ${inputA.name} 和 ${inputB.name}，并调用相应工具。`
 
       return [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ]
     },
-    [],
+    [buildWorldContext],
   )
 
   /**
@@ -674,7 +673,7 @@ export function useWorkspace() {
                 { role: 'system', content: decomposePrompt! },
                 {
                   role: 'user',
-                  content: `【秘宝】${relicInput!.name}（ID: ${relicInput!.id}）\n【待处理元素】${elemInput.name}（ID: ${elemInput.id}，类别：${
+                  content: `${buildWorldContext()}\n\n【秘宝】${relicInput!.name}（ID: ${relicInput!.id}）\n【待处理元素】${elemInput.name}（ID: ${elemInput.id}，类别：${
                     stateRef.current.categories.find((c) => c.id === elemInput.categoryId)?.name ?? elemInput.categoryId
                   }）${elemInput.description ? `：${elemInput.description}` : ''}\n\n请使用「${relicInput!.name}」触发秘宝反应，产出概念元素（可引用已有元素 ID 或创建新元素，产物并列），并调用 craft_recipe 绑定本次输入与输出。`,
                 },
@@ -685,7 +684,7 @@ export function useWorkspace() {
                 { role: 'system', content: decomposePrompt! },
                 {
                   role: 'user',
-                  content: `【秘宝】${relicInput!.name}（ID: ${relicInput!.id}）\n【待点化元素】${inputA.relicId ? inputB.name : inputA.name}（ID: ${inputA.relicId ? inputB.id : inputA.id}）\n\n【玩家的点化请求】\n${transmuteRequest}`,
+                  content: `${buildWorldContext()}\n\n【秘宝】${relicInput!.name}（ID: ${relicInput!.id}）\n【待点化元素】${inputA.relicId ? inputB.name : inputA.name}（ID: ${inputA.relicId ? inputB.id : inputA.id}）\n\n【玩家的点化请求】\n${transmuteRequest}`,
                 },
               ]
             : buildMessages(inputA, inputB)
@@ -1008,7 +1007,7 @@ export function useWorkspace() {
         setIsCrafting(false)
       }
     },
-    [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, consumeInputs, bumpUseCount, unlockElements, addCraftHistoryEntry],
+    [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, buildWorldContext, consumeInputs, bumpUseCount, unlockElements, addCraftHistoryEntry],
   )
   /** 黑化秘宝：与元素结合触发拆解（委托 craft：构建配方、可引用已有元素、保留历史记录） */
   const decomposeElement = useCallback(
