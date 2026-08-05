@@ -18,41 +18,76 @@ type GraphNode = NodeObject<Element>
 /** 节点绘制半径（世界坐标单位；随缩放一起变化） */
 const NODE_R = 32
 
-/** 最大生成树：边权 = 两端重要度之和；仍是树，但枢纽元素优先连最重要的邻居 */
-function maximumSpanningTree(
+/** 虚拟世界中心节点：连接四大基础元素，体现「世界之心」的意象（非真实元素，仅地图可视化） */
+const WORLD_CORE_ID = 'world_core'
+const WORLD_CORE_BASICS = ['fire', 'water', 'air', 'earth']
+const WORLD_CORE: GraphNode = {
+  id: WORLD_CORE_ID,
+  name: '',
+  description: '',
+  categoryId: 'cosmos',
+  svg: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="coreGlow" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="#fbbf24" stop-opacity="0.55"/><stop offset="100%" stop-color="#92400e" stop-opacity="0"/></radialGradient><linearGradient id="corePlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#78350f"/><stop offset="55%" stop-color="#5b2a0b"/><stop offset="100%" stop-color="#451a03"/></linearGradient><linearGradient id="coreFlask" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fde68a"/><stop offset="100%" stop-color="#d97706"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="url(#coreGlow)"/><circle cx="50" cy="50" r="37" fill="url(#corePlate)"/><circle cx="50" cy="50" r="37" fill="none" stroke="#fcd34d" stroke-opacity="0.3" stroke-width="1.5"/><ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.12" transform="rotate(-28 38 33)"/><rect x="43" y="19" width="14" height="4" rx="2" fill="#fde68a" stroke="#b45309" stroke-width="1.5"/><path d="M46 23 L54 23 L54 37 L46 37 Z" fill="#fbbf24" stroke="#b45309" stroke-width="1.5"/><path d="M42 37 L58 37 L67 74 Q67 80 58 80 L42 80 Q33 80 33 74 Z" fill="url(#coreFlask)" stroke="#b45309" stroke-width="2"/><path d="M44 42 L56 42 L50 57 Z" fill="#fef3c7" opacity="0.55"/><path d="M35 66 L65 66 L67 74 Q67 80 58 80 L42 80 Q33 80 33 74 Z" fill="#b45309" opacity="0.85"/><circle cx="44" cy="70" r="1.8" fill="#fff" opacity="0.55"/><circle cx="54" cy="74" r="1.4" fill="#fff" opacity="0.45"/><circle cx="49" cy="62" r="1.2" fill="#fff" opacity="0.5"/></svg>',
+  createdAt: 0,
+  useCount: 0,
+}
+
+/** 广搜生成树：从根（世界之心）出发逐层向外展开，
+ *  根的直连邻居（四大基础元素）必定在第一层；游离孤岛尽力复用原边并入 */
+function bfsSpanningTree(
   nodeIds: string[],
   edges: Array<{ source: string; target: string }>,
+  root: string | null,
 ): Array<{ source: string; target: string }> {
-  const deg = new Map<string, number>()
+  const adj = new Map<string, string[]>()
+  for (const id of nodeIds) adj.set(id, [])
   for (const e of edges) {
-    deg.set(e.source, (deg.get(e.source) ?? 0) + 1)
-    deg.set(e.target, (deg.get(e.target) ?? 0) + 1)
+    if (!adj.has(e.source) || !adj.has(e.target)) continue
+    adj.get(e.source)!.push(e.target)
+    adj.get(e.target)!.push(e.source)
   }
-  const parent = new Map<string, string>()
-  const find = (x: string): string => {
-    const p = parent.get(x) ?? x
-    if (p !== x) {
-      parent.set(x, find(p))
-      return parent.get(x)!
-    }
-    return x
-  }
-  const union = (a: string, b: string) => {
-    parent.set(find(a), find(b))
-  }
-  for (const id of nodeIds) parent.set(id, id)
-  const sorted = [...edges].sort((a, b) => {
-    const wa = (deg.get(a.source) ?? 0) + (deg.get(a.target) ?? 0)
-    const wb = (deg.get(b.source) ?? 0) + (deg.get(b.target) ?? 0)
-    if (wb !== wa) return wb - wa
-    return `${a.source}|${a.target}`.localeCompare(`${b.source}|${b.target}`)
-  })
+  // 邻居按 id 排序：广搜访问顺序确定，布局稳定
+  for (const list of adj.values()) list.sort()
+
   const tree: Array<{ source: string; target: string }> = []
-  for (const e of sorted) {
-    if (find(e.source) !== find(e.target)) {
-      union(e.source, e.target)
-      tree.push(e)
+  const visited = new Set<string>()
+  const bfs = (start: string, parent: string | null) => {
+    const queue: Array<[string, string | null]> = [[start, parent]]
+    visited.add(start)
+    for (let i = 0; i < queue.length; i++) {
+      const [id, p] = queue[i]
+      if (p !== null) tree.push({ source: p, target: id })
+      for (const n of adj.get(id) ?? []) {
+        if (n === p || visited.has(n)) continue
+        visited.add(n)
+        queue.push([n, id])
+      }
     }
+  }
+
+  // 根 = 世界之心（存在时）；其余根取从未作为产物出现的节点
+  if (root && nodeIds.includes(root)) bfs(root, null)
+  for (const id of nodeIds) {
+    if (!visited.has(id) && !edges.some((e) => e.target === id)) bfs(id, null)
+  }
+  // 兜底：游离孤岛优先复用原有边并入主树，避免出现「森林」
+  for (let guard = 0; guard < nodeIds.length && visited.size < nodeIds.length; guard++) {
+    let bridged = false
+    for (const id of nodeIds) {
+      if (visited.has(id)) continue
+      for (const n of adj.get(id) ?? []) {
+        if (visited.has(n)) {
+          bfs(id, n)
+          bridged = true
+          break
+        }
+      }
+      if (bridged) break
+    }
+    if (!bridged) break
+  }
+  // 仍无法连接的孤立点：单独挂起（布局层会分散处理）
+  for (const id of nodeIds) {
+    if (!visited.has(id)) bfs(id, null)
   }
   return tree
 }
@@ -262,10 +297,21 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
         }
       }
     }
+    // 虚拟世界中心：连接已解锁的四大基础元素（作为世界树根，体现中心）
+    const coreBasics = WORLD_CORE_BASICS.filter((id) => ids.has(id))
+    if (coreBasics.length > 0) {
+      nodes.push({ ...WORLD_CORE })
+      for (const b of coreBasics) {
+        const key = [WORLD_CORE_ID, b].sort().join('|')
+        if (!fullMap.has(key)) fullMap.set(key, { source: WORLD_CORE_ID, target: b })
+      }
+    }
     const fullLinks = Array.from(fullMap.values())
-    const treeLinks = maximumSpanningTree(
+    // 广搜生成树：以世界之心为根逐层向外，四大基础元素必定在第一层
+    const treeLinks = bfsSpanningTree(
       nodes.map((n) => String(n.id)),
       fullLinks,
+      coreBasics.length > 0 ? WORLD_CORE_ID : null,
     )
     // 树模式：径向树布局并固定节点，保证任意两条边不相交、向四面八方展开
     const layout = radialTreeLayout(
@@ -273,11 +319,11 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
       treeLinks,
     )
     // 径向树布局只作初始位置，不固定节点——保留弹性
-    const mstNodes: GraphNode[] = nodes.map((n) => {
+    const treeNodes: GraphNode[] = nodes.map((n) => {
       const p = layout.get(String(n.id))
       return p ? { ...n, x: p.x, y: p.y } : { ...n }
     })
-    return { nodes, mstNodes, fullLinks, treeLinks }
+    return { nodes, mstNodes: treeNodes, fullLinks, treeLinks }
   }, [elements, recipes])
 
   const links = graphData.treeLinks
@@ -285,20 +331,24 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
 
   // 元素徽章 SVG → canvas 图片缓存（StrictMode 安全：加载状态存 ref，重复挂载不会丢回调）
   useEffect(() => {
-    for (const el of elements) {
-      if (imagesRef.current.has(el.id) || loadingRef.current.has(el.id)) continue
-      loadingRef.current.add(el.id)
+    const loadImage = (id: string, svg: string) => {
+      if (imagesRef.current.has(id) || loadingRef.current.has(id)) return
+      loadingRef.current.add(id)
       const img = new Image()
       img.onload = () => {
-        imagesRef.current.set(el.id, img)
+        imagesRef.current.set(id, img)
         forceTick((t) => t + 1)
       }
       img.onerror = () => {
-        imagesRef.current.set(el.id, undefined)
+        imagesRef.current.set(id, undefined)
         forceTick((t) => t + 1)
       }
-      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSVG(el.svg))}`
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSVG(svg))}`
     }
+    for (const el of elements) {
+      loadImage(el.id, el.svg)
+    }
+    loadImage(WORLD_CORE_ID, WORLD_CORE.svg)
   }, [elements])
 
   // 布局：低向心拉力让图四面散开 + 角度均衡力让边均匀分布
@@ -431,7 +481,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
           <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图 · 元素关系网</h2>
           <div className="flex items-center gap-2">
             <span className="text-xs text-amber-200/80">
-              {graphData.nodes.length} 元素 · {links.length} 关系（最大生成树）
+              {graphData.nodes.filter((n) => String(n.id) !== WORLD_CORE_ID).length} 元素 · {links.length} 关系（广搜生成树）
             </span>
             <button
               onClick={onClose}
@@ -460,7 +510,11 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
               nodeCanvasObjectMode={() => 'replace'}
               nodeCanvasObject={drawNode}
               nodePointerAreaPaint={nodePointerAreaPaint}
-              onNodeClick={(node) => setSelected(node.id === selected ? null : String(node.id))}
+              onNodeClick={(node) => {
+                const id = String(node.id)
+                if (id === WORLD_CORE_ID) return
+                setSelected(id === selected ? null : id)
+              }}
               onBackgroundClick={() => setSelected(null)}
               onRenderFramePost={(ctx, globalScale) => {
                 // 选中元素：参与合成（绿虚线）+ 获得方式（橙虚线）叠画，纯视觉不影响力。
