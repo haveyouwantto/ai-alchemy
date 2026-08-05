@@ -16,7 +16,94 @@ interface WorldMapProps {
 type GraphNode = NodeObject<Element>
 
 /** 节点绘制半径（世界坐标单位；随缩放一起变化） */
-const NODE_R = 8
+const NODE_R = 32
+
+/** Kruskal 最小生成树（按节点 id 排序保证确定性；不连通时生成森林） */
+function kruskalMst(
+  nodeIds: string[],
+  edges: Array<{ source: string; target: string }>,
+): Array<{ source: string; target: string }> {
+  const parent = new Map<string, string>()
+  const find = (x: string): string => {
+    const p = parent.get(x) ?? x
+    if (p !== x) {
+      parent.set(x, find(p))
+      return parent.get(x)!
+    }
+    return x
+  }
+  const union = (a: string, b: string) => {
+    parent.set(find(a), find(b))
+  }
+  for (const id of nodeIds) parent.set(id, id)
+  const sorted = [...edges].sort((a, b) => `${a.source}|${a.target}`.localeCompare(`${b.source}|${b.target}`))
+  const tree: Array<{ source: string; target: string }> = []
+  for (const e of sorted) {
+    if (find(e.source) !== find(e.target)) {
+      union(e.source, e.target)
+      tree.push(e)
+    }
+  }
+  return tree
+}
+
+/** 角度均衡力（表面张力）：让每个节点的相邻边尽量均匀分布、夹角趋于最大 */
+function createAngleSpreadForce(
+  links: Array<{ source: string; target: string }>,
+): (alpha: number) => void {
+  let nodes: GraphNode[] = []
+  let nodesById = new Map<string, GraphNode>()
+  const adj = new Map<string, string[]>()
+
+  const applyTangential = (p: GraphNode, n: GraphNode, f: number, dir: number) => {
+    const dx = (n.x ?? 0) - (p.x ?? 0)
+    const dy = (n.y ?? 0) - (p.y ?? 0)
+    const d = Math.hypot(dx, dy) || 1
+    n.vx = (n.vx ?? 0) + (dy / d) * f * dir
+    n.vy = (n.vy ?? 0) + (-dx / d) * f * dir
+  }
+
+  const force = (alpha: number) => {
+    adj.clear()
+    for (const link of links) {
+      const s = link.source
+      const t = link.target
+      if (!adj.has(s)) adj.set(s, [])
+      if (!adj.has(t)) adj.set(t, [])
+      adj.get(s)!.push(t)
+      adj.get(t)!.push(s)
+    }
+    for (const node of nodes) {
+      const nbrIds = adj.get(String(node.id)) ?? []
+      if (nbrIds.length < 2) continue
+      const nbrs = nbrIds
+        .map((id) => nodesById.get(id))
+        .filter((n): n is GraphNode => !!n)
+      if (nbrs.length < 2) continue
+      const items = nbrs.map((n) => ({ n, a: Math.atan2((n.y ?? 0) - (node.y ?? 0), (n.x ?? 0) - (node.x ?? 0)) }))
+      items.sort((u, v) => u.a - v.a)
+      const target = (2 * Math.PI) / items.length
+      for (let i = 0; i < items.length; i++) {
+        const u = items[i]
+        const v = items[(i + 1) % items.length]
+        let gap = v.a - u.a
+        if (i === items.length - 1) gap += 2 * Math.PI
+        const excess = gap - target
+        if (excess > 0.05) {
+          // 缺口过大：把 u 顺时针、v 逆时针拉近，缩小大缺口、撑开其余夹角
+          const f = Math.min(excess, Math.PI) * 2.0 * alpha
+          applyTangential(node, u.n, f, 1)
+          applyTangential(node, v.n, f, -1)
+        }
+      }
+    }
+  }
+  ;(force as { initialize?: (n: GraphNode[]) => void }).initialize = (n: GraphNode[]) => {
+    nodes = n
+    nodesById = new Map(n.map((x) => [String(x.id), x]))
+  }
+  return force
+}
 
 export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }: WorldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -39,23 +126,37 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     return () => ro.disconnect()
   }, [open])
 
-  // 图数据：节点 = 已解锁元素；连线 = 配方输入 → 输出
+  // 图数据：节点 = 已解锁元素；连线 = 配方输入 → 输出（只画参与方向）；默认只展示最小生成树骨架
   const graphData = useMemo(() => {
     const ids = new Set(elements.map((e) => e.id))
     const nodes: GraphNode[] = elements.map((e) => ({ ...e }))
-    const linkMap = new Map<string, { source: string; target: string }>()
+    const fullMap = new Map<string, { source: string; target: string }>()
     for (const r of recipes) {
       for (const oid of r.outputs) {
         if (!ids.has(oid)) continue
         for (const iid of [r.inputA, r.inputB]) {
           if (iid === oid || !ids.has(iid)) continue
           const key = [iid, oid].sort().join('|')
-          if (!linkMap.has(key)) linkMap.set(key, { source: iid, target: oid })
+          if (!fullMap.has(key)) fullMap.set(key, { source: iid, target: oid })
         }
       }
     }
-    return { nodes, links: Array.from(linkMap.values()) }
+    const fullLinks = Array.from(fullMap.values())
+    const mstLinks = kruskalMst(
+      nodes.map((n) => String(n.id)),
+      fullLinks,
+    )
+    // 树模式：径向初始布局（黄金角螺旋），让树向四面八方展开，不做垂直分层
+    const mstNodes: GraphNode[] = nodes.map((n, i) => {
+      const angle = i * 2.39996
+      const radius = Math.sqrt(i + 1) * 58
+      return { ...n, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
+    })
+    return { nodes, mstNodes, mstLinks }
   }, [elements, recipes])
+
+  const links = graphData.mstLinks
+  const nodes = graphData.mstNodes
 
   // 元素徽章 SVG → canvas 图片缓存（StrictMode 安全：加载状态存 ref，重复挂载不会丢回调）
   useEffect(() => {
@@ -75,27 +176,29 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     }
   }, [elements])
 
-  // 布局：加大节点间距（更强斥力 + 更长的连线理想距离）
+  // 布局：低向心拉力让图四面散开 + 角度均衡力让边均匀分布
+  // 注意依赖 size：图表在容器测量完成后才挂载，fgRef 就绪后再配置力，否则配置会被跳过
   useEffect(() => {
     const g = fgRef.current
     if (!g) return
-    g.d3Force('charge')?.strength(-140)
-    g.d3Force('link')?.distance(95)
-    g.d3Force('center')?.strength(0.4)
-  }, [graphData])
+    g.d3Force('charge')?.strength(-120)
+    g.d3Force('link')?.distance(115)
+    g.d3Force('center')?.strength(0.05)
+    g.d3Force('angleSpread', createAngleSpreadForce(links))
+  }, [links, size])
 
   // 选中节点的邻接元素
   const neighbors = useMemo(() => {
     const set = new Set<string>()
     if (!selected) return set
-    for (const l of graphData.links) {
+    for (const l of links) {
       const s = String(l.source)
       const t = String(l.target)
       if (s === selected) set.add(t)
       if (t === selected) set.add(s)
     }
     return set
-  }, [selected, graphData.links])
+  }, [selected, links])
 
   const drawNode: NonNullable<ForceGraphProps<Element, { source: string; target: string }>['nodeCanvasObject']> = (
     node,
@@ -184,7 +287,9 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
         <div className="flex items-center justify-between border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
           <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图 · 元素关系网</h2>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-amber-200/80">{graphData.nodes.length} 元素 · {graphData.links.length} 关系</span>
+            <span className="text-xs text-amber-200/80">
+              {graphData.nodes.length} 元素 · {links.length} 关系（最小生成树）
+            </span>
             <button
               onClick={onClose}
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
@@ -208,7 +313,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
               width={size.width}
               height={size.height}
               backgroundColor="rgba(0,0,0,0)"
-              graphData={{ nodes: graphData.nodes, links: graphData.links }}
+              graphData={{ nodes, links }}
               nodeCanvasObjectMode={() => 'replace'}
               nodeCanvasObject={drawNode}
               nodePointerAreaPaint={nodePointerAreaPaint}
@@ -219,7 +324,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
               linkDirectionalArrowLength={4}
               linkDirectionalArrowRelPos={1}
               linkDirectionalParticles={selected ? 2 : 0}
-              cooldownTime={8000}
+              cooldownTime={12000}
             />
           ) : null}
 
@@ -267,7 +372,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
 
         {/* 底部提示 */}
         <div className="border-t border-amber-900/30 bg-[#7a4a20]/95 px-4 py-2 text-xs text-amber-100/80">
-          滚轮缩放 · 拖动平移 · 点击元素高亮其合成关系
+          展示元素参与合成的最小生成树骨架 · 滚轮缩放 · 拖动平移 · 点击元素高亮
         </div>
       </div>
 
