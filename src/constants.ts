@@ -1,4 +1,4 @@
-import type { Element, ElementCategory, Recipe } from './types'
+import type { Achievement, Element, ElementCategory, Recipe } from './types'
 import defaultWorkspace from './data/defaultWorkspace.json'
 
 /** 初始基础元素列表（完全数据驱动，从 defaultWorkspace.json 加载） */
@@ -186,6 +186,53 @@ export const RELIC_VERBS: Record<string, string> = {
   citrinitas: '精炼',
   rubedo: '点化',
 }
+
+/** 成就定义。图标底板：正方形四角各挖去一个半径 = 边长一半（50）的四分之一圆，中央为拟物图标 */
+export const ACHIEVEMENTS: Achievement[] = [
+  {
+    id: 'discover_10',
+    name: '初窥门径',
+    description: '发现 10 个元素，炼金之路自此开启。',
+    icon: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="ach10Plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#b45309"/><stop offset="100%" stop-color="#7c2d12"/></linearGradient></defs><path d="M50 0 A50 50 0 0 0 100 50 A50 50 0 0 0 50 100 A50 50 0 0 0 0 50 A50 50 0 0 0 50 0 Z" fill="url(#ach10Plate)" stroke="#fcd34d" stroke-width="2"/><rect x="30" y="38" width="40" height="28" rx="3" fill="#fdf6e3"/><rect x="28" y="40" width="44" height="5" fill="#e9d295"/><rect x="28" y="59" width="44" height="5" fill="#e9d295"/><path d="M43 47 h14 M43 53 h10" stroke="#a16207" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    reward: { nigredo: 1 },
+    metric: 'elements',
+    targetCount: 10,
+  },
+  {
+    id: 'discover_30',
+    name: '博闻强识',
+    description: '发现 30 个元素，万象之书已翻过大半。',
+    icon: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="ach30Plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#a16207"/><stop offset="100%" stop-color="#713f12"/></linearGradient></defs><path d="M50 0 A50 50 0 0 0 100 50 A50 50 0 0 0 50 100 A50 50 0 0 0 0 50 A50 50 0 0 0 50 0 Z" fill="url(#ach30Plate)" stroke="#fde047" stroke-width="2"/><path d="M50 22 L55.5 38 L72.5 38 L59 48 L63.5 64 L50 54 L36.5 64 L41 48 L27.5 38 L44.5 38 Z" fill="#fef3c7"/></svg>',
+    reward: { albedo: 1 },
+    metric: 'elements',
+    targetCount: 30,
+  },
+  {
+    id: 'discover_categories',
+    name: '万象初开',
+    description: '发现 3 个元素类别，天地有了分野。',
+    icon: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="achCatPlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0e7490"/><stop offset="100%" stop-color="#164e63"/></linearGradient></defs><path d="M50 0 A50 50 0 0 0 100 50 A50 50 0 0 0 50 100 A50 50 0 0 0 0 50 A50 50 0 0 0 50 0 Z" fill="url(#achCatPlate)" stroke="#a5f3fc" stroke-width="2"/><circle cx="34" cy="52" r="9" fill="#e0f2fe"/><circle cx="50" cy="44" r="9" fill="#cffafe"/><circle cx="66" cy="52" r="9" fill="#e0f2fe"/><circle cx="34" cy="52" r="3.2" fill="#0e7490"/><circle cx="50" cy="44" r="3.2" fill="#155e75"/><circle cx="66" cy="52" r="3.2" fill="#0e7490"/></svg>',
+    reward: { citrinitas: 1 },
+    metric: 'categories',
+    targetCount: 3,
+  },
+  {
+    id: 'find_gold',
+    name: '点石成金',
+    description: '发现「黄金」，凡铁终成贵金。',
+    icon: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="achGoldPlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#854d0e"/><stop offset="100%" stop-color="#4d2c05"/></linearGradient><linearGradient id="achGoldIngot" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fef08a"/><stop offset="100%" stop-color="#eab308"/></linearGradient></defs><path d="M50 0 A50 50 0 0 0 100 50 A50 50 0 0 0 50 100 A50 50 0 0 0 0 50 A50 50 0 0 0 50 0 Z" fill="url(#achGoldPlate)" stroke="#fde047" stroke-width="2"/><path d="M33 64 L38 43 L62 43 L67 64 Z" fill="url(#achGoldIngot)"/><path d="M38 43 L50 34 L62 43 Z" fill="#fef9c3"/><path d="M46 52 L50 46 L54 52 L50 58 Z" fill="#854d0e" opacity="0.55"/></svg>',
+    reward: { rubedo: 1 },
+    targetIds: ['gold'],
+  },
+  {
+    id: 'find_life',
+    name: '生命之泉',
+    description: '发现「生命」，万物有了脉搏。',
+    icon: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="achLifePlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#15803d"/><stop offset="100%" stop-color="#14532d"/></linearGradient></defs><path d="M50 0 A50 50 0 0 0 100 50 A50 50 0 0 0 50 100 A50 50 0 0 0 0 50 A50 50 0 0 0 50 0 Z" fill="url(#achLifePlate)" stroke="#bbf7d0" stroke-width="2"/><path d="M50 60 C43 54 34 49 34 41 A7.5 7.5 0 0 1 50 36.5 A7.5 7.5 0 0 1 66 41 C66 49 57 54 50 60 Z" fill="#f0fdf4"/><path d="M50 56 C45 52 39 48 39 42.5 A5.5 5.5 0 0 1 50 39.5 A5.5 5.5 0 0 1 61 42.5 C61 48 55 52 50 56 Z" fill="#4ade80"/></svg>',
+    reward: { nigredo: 2 },
+    targetIds: ['life'],
+  },
+]
 
 /** LLM 系统提示词（固定不变部分）。
  * 所有动态数据（类别清单、元素图鉴、本次合成对象、相关配方）一律放在下一条 user 消息中构造，
