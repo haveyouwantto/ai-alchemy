@@ -34,7 +34,29 @@ export const SYSTEM_PROMPT_TEMPLATE = `你是一个炼金术合成规则生成�
    - category_id 为必填字段，每个新元素都必须明确指定，不得省略：先查看类别列表选用合适的已有类别；若属于全新大类，必须先调用 create_category 创建类别再用其 ID
    - 为它写一段简短的 description（一两句即可）。描述只能刻画该元素本身的形态、性质或象征，严禁提及它是如何被合成的、由谁与谁组合而成、或者任何「合成/炼成/来源/配方/获得方式」相关的字眼
    - 元素应归属到合适的「大类」：当产物属于一个全新的、能容纳多个相近元素的宏大主题时，调用 create_category 创建这个大类别；已有合适的大类别时则直接复用归入。不要为单个元素创建过小或过于独特的类别，仅当产物与现有类别都毫不相干时，才为它建立新的大类别
-   - 设计一个美观的 SVG（画布 100x100，纯矢量）。具体物件要直观可辨，抽象概念则用简单的象征性图形表达
+   - 设计一个美观的 SVG（画布 100x100，纯矢量），必须以固定模板绘制「元素徽章」：
+     <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+       <defs>
+         <radialGradient id="elementGlow" cx="50%" cy="42%" r="60%">
+           <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.55"/>
+           <stop offset="100%" stop-color="#0369a1" stop-opacity="0"/>
+         </radialGradient>
+         <linearGradient id="elementPlate" x1="0" y1="0" x2="0" y2="1">
+           <stop offset="0%" stop-color="#0c4a6e"/>
+           <stop offset="55%" stop-color="#075985"/>
+           <stop offset="100%" stop-color="#082f49"/>
+         </linearGradient>
+       </defs>
+       <circle cx="50" cy="50" r="46" fill="url(#elementGlow)"/>
+       <circle cx="50" cy="50" r="37" fill="url(#elementPlate)"/>
+       <circle cx="50" cy="50" r="37" fill="none" stroke="#bae6fd" stroke-opacity="0.28" stroke-width="1.5"/>
+       <ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.12" transform="rotate(-28 38 33)"/>
+       <!-- 在此处绘制居中主体图形 -->
+     </svg>
+     模板使用规则：
+     * 保留圆形徽章结构（光晕圆 + 深色渐变圆盘 + 细描边 + 左上高光），把模板中的蓝色系替换为该元素主题色系：深色圆盘用该色系的深色，光晕与描边用其亮色
+     * 在圆盘正中（约 35~65 区域）绘制一个浅亮色、拟物化的主体图形——具体物件画出清晰直观的实物造型，抽象概念则用简洁具象的象征图形表达；主体用同色系深浅渐变与高光体现层次与体积感，保持简洁精致，避免零碎细节
+     * 除圆盘与中央主体外，不要额外背景、边框、文字或装饰；把模板里的渐变 id（elementGlow/elementPlate）改为与元素相关且唯一的 id（如 fireGlow、firePlate），不要使用 grad、g 这类通用 id
    - 类别名称要古风典雅、寓意隽永，正好4个汉字；类别描述同样古朴雅致
 7. 必须调用 craft_recipe 绑定本次的输入和输出。
 注意：不要生成与输入元素完全相同的产物；具体优先、避免浮夸。`
@@ -101,7 +123,7 @@ export const FUNCTIONS = [
             properties: {
               id: { type: 'string', description: '必须用英语书写：小写字母 a-z、数字 0-9、下划线，单词间用下划线连接；禁止中文拼音或非英文字符' },
               name: { type: 'string', description: '类别中文名称，要求古风典雅、寓意隽永，勿用直白口语或网络用语' },
-              icon: { type: 'string', description: '100x100 纯矢量 SVG' },
+              icon: { type: 'string', description: '100x100 纯矢量 SVG，采用与元素图标一致的「元素徽章」画风：圆形发光徽章底盘 + 居中的拟物象征图形' },
               description: { type: 'string', description: '类别描述（中文，古朴雅致）' },
             },
             required: ['id', 'name', 'icon', 'description'],
