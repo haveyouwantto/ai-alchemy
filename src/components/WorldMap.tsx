@@ -164,7 +164,7 @@ function createAngleSpreadForce(
         const excess = gap - target
         if (excess > 0.05) {
           // 缺口过大：把 u 顺时针、v 逆时针拉近，缩小大缺口、撑开其余夹角
-          const f = Math.min(excess, Math.PI) * 2.5 * alpha
+          const f = Math.min(excess, Math.PI) * 4 * alpha
           applyTangential(node, u.n, f, 1)
           applyTangential(node, v.n, f, -1)
         }
@@ -311,6 +311,9 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     g.d3Force('center')?.strength(0.05)
     g.d3Force('angleSpread', createAngleSpreadForce(links))
     g.d3Force('edgeCross', createEdgeCrossForce(links))
+    // 自定义力挂载后重新加热仿真：让角度均衡在打开时就以满强度运行，
+    // 而不是等到拖动节点（仿真被重新加热）才生效
+    g.d3ReheatSimulation()
   }, [links, size])
 
   // 选中节点的邻接元素
