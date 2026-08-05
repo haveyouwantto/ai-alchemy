@@ -441,17 +441,35 @@ export default function App() {
   // ---- 键盘快捷键 ----
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + K → 元素图鉴
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setShowCodex((v) => !v)
-        return
-      }
-      // Ctrl/Cmd + H → 炼金记录
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'h') {
-        e.preventDefault()
-        setShowHistory((v) => !v)
-        return
+      // 输入框/文本框/可编辑区域内不响应单键快捷键
+      const target = e.target as HTMLElement | null
+      const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      // 单键快捷键：E/Z 图鉴 · X 记录 · C 秘宝 · V 地图 · B 成就 · R 整理 · L 清空
+      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        switch (e.key.toLowerCase()) {
+          case 'e':
+          case 'z':
+            setShowCodex(true)
+            return
+          case 'x':
+            setShowHistory(true)
+            return
+          case 'c':
+            setShowRelics(true)
+            return
+          case 'v':
+            setShowMap(true)
+            return
+          case 'b':
+            setShowAchievements(true)
+            return
+          case 'r':
+            handleTidyWorkspace()
+            return
+          case 'l':
+            handleClearWorkspace()
+            return
+        }
       }
       // Delete / Backspace → 删除选中
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIndex !== null) {
@@ -463,7 +481,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedIndex, handleDelete])
+  }, [selectedIndex, handleDelete, handleTidyWorkspace, handleClearWorkspace])
 
   // 快捷按钮容器：上大图标 + 下小字，数字徽章为右上角小黄点
   // Android 系统 WebView 兼容：切后台再回来有时只重绘 CSS 背景、DOM 图层丢失（只剩桌布），
@@ -658,12 +676,6 @@ export default function App() {
         onOpenLibrary={() => setShowCodex(true)}
         onDeleteToTrash={handleDeleteToTrash}
       />
-
-      {/* 底部提示条 */}
-      <div className="border-t-2 border-amber-900/40 bg-gradient-to-r from-[#3a2512] via-[#4a2e16] to-[#2b1a0d] px-3 py-1.5 text-center font-serif text-xs text-amber-200/70">
-        <span className="hidden sm:inline">拖拽卡片到另一张上合成 · 拖到空白可移动 · 双击复制 · Ctrl+K 图鉴 · 选中后 Delete 删除</span>
-        <span className="sm:hidden">拖拽卡片合成或移动 · 长按拖拽</span>
-      </div>
 
       {/* Modal 层 */}
       <ElementCodex
