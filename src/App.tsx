@@ -416,18 +416,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selectedIndex, handleDelete])
 
-  // 快捷按钮容器
+  // 快捷按钮容器：上大图标 + 下小字，数字徽章为右上角小黄点
   const ToolButton = ({
     onClick,
     disabled,
     active,
     title,
+    badge,
+    dot,
+    label,
     children,
   }: {
     onClick: () => void
     disabled?: boolean
     active?: boolean
     title: string
+    badge?: number
+    dot?: boolean
+    label: string
     children: React.ReactNode
   }) => (
     <button
@@ -435,7 +441,7 @@ export default function App() {
       disabled={disabled}
       title={title}
       className={[
-        'flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-95',
+        'flex shrink-0 flex-col items-center gap-1 rounded-xl px-3 py-1.5 text-[11px] font-medium transition-all active:scale-95',
         disabled
           ? 'cursor-not-allowed opacity-40'
           : active
@@ -443,7 +449,16 @@ export default function App() {
             : 'border border-amber-800/50 bg-[#4a2e16]/80 text-amber-100 hover:border-amber-600/70 hover:bg-[#5d3a1c]/80 hover:text-amber-50',
       ].join(' ')}
     >
-      {children}
+      <span className="relative leading-none">
+        <span className="block text-xl leading-none">{children}</span>
+        {badge !== undefined && (
+          <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-yellow-400 px-0.5 text-[10px] font-bold leading-none text-amber-950 shadow-[0_0_6px_rgba(251,191,36,0.55)]">
+            {badge}
+          </span>
+        )}
+        {dot && <span className="absolute -right-1 -top-1 h-2 w-2 animate-pulse rounded-full bg-red-400" />}
+      </span>
+      <span className="leading-none">{label}</span>
     </button>
   )
 
@@ -451,68 +466,87 @@ export default function App() {
     <div className="flex h-screen flex-col overflow-hidden bg-[#241508] text-amber-100">
       {/* 顶部状态栏 */}
       <div className="border-b-2 border-amber-900/40 bg-gradient-to-r from-[#3a2512] via-[#4a2e16] to-[#2b1a0d] shadow-[0_1px_0_rgba(255,200,100,0.12)]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
-          <h1 className="mr-auto flex items-center gap-2 font-serif text-base font-bold tracking-wide text-amber-300 sm:text-lg">
-            <span className="text-2xl">⚗️</span>
+        <div className="mx-auto flex max-w-7xl items-center gap-1 px-2 py-1.5 sm:px-3">
+          <h1 className="mr-1 flex shrink-0 items-center gap-1.5 font-serif text-sm font-bold tracking-wide text-amber-300 sm:text-base">
+            <span className="text-xl">⚗️</span>
             <span className="hidden sm:inline">AI 炼金术工坊</span>
             <span className="sm:hidden">炼金工坊</span>
-            <span className="text-lg opacity-80" title="油灯长明">🪔</span>
           </h1>
 
-          {/* 功能按钮 */}
-          <ToolButton onClick={() => setShowCodex(true)} title="元素图鉴 (Ctrl+K)" active>
-            <span className="text-lg leading-none">📚</span>
-            <span className="hidden sm:inline">图鉴</span>
-            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
-              {stats.uniqueCount}
-            </span>
-          </ToolButton>
-          <ToolButton onClick={() => setShowHistory(true)} title="炼金记录 (Ctrl+H)" active={showHistory}>
-            <span className="text-lg leading-none">📜</span>
-            <span className="hidden sm:inline">记录</span>
-            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
-              {craftHistory.length}
-            </span>
-          </ToolButton>
-          <ToolButton onClick={() => setShowRelics(true)} title="秘宝录：消耗品，用一次少一个" active={showRelics}>
-            <span className="text-lg leading-none">🏺</span>
-            <span className="hidden sm:inline">秘宝</span>
-            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
-              {Object.values(relics).reduce((sum, n) => sum + n, 0)}
-            </span>
-          </ToolButton>
-          <ToolButton onClick={() => setShowMap(true)} title="世界地图：元素关系可视化" active={showMap}>
-            <span className="text-lg leading-none">🗺️</span>
-            <span className="hidden sm:inline">地图</span>
-          </ToolButton>
-          <ToolButton onClick={() => setShowAchievements(true)} title="成就" active={showAchievements}>
-            <span className="text-lg leading-none">🏆</span>
-            <span className="hidden sm:inline">成就</span>
-            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
-              {Object.keys(achievements).length}
-            </span>
-          </ToolButton>
-          <ToolButton onClick={handleExport} title="导出工作区 (ZIP)">
-            <span className="text-lg leading-none">💾</span>
-            <span className="hidden md:inline">导出</span>
-          </ToolButton>
-          <ToolButton onClick={handleImportClick} title="导入工作区 (ZIP)">
-            <span className="text-lg leading-none">📂</span>
-            <span className="hidden md:inline">导入</span>
-          </ToolButton>
-          <ToolButton onClick={handleTidyWorkspace} title="整理桌面：平铺所有卡片">
-            <span className="text-lg leading-none">🗂️</span>
-            <span className="hidden md:inline">整理</span>
-          </ToolButton>
-          <ToolButton onClick={handleClearWorkspace} title="清空桌面" active={confirmClear}>
-            <span className="text-lg leading-none">🧹</span>
-            <span className="hidden md:inline">{confirmClear ? '确认清空？' : '清空桌面'}</span>
-          </ToolButton>
-          <ToolButton onClick={() => setShowSettings(true)} title="AI 设置">
-            <span className="text-lg leading-none">⚙️</span>
-            <span className="hidden md:inline">AI 设置</span>
-            {!aiConfig.baseURL && <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />}
-          </ToolButton>
+          {/* 功能按钮栏：单行、贴右，可左右滚动 */}
+          <div className="alchemy-scroll flex min-w-0 flex-1 overflow-x-auto py-0.5">
+            <div className="ml-auto flex w-max items-stretch gap-1 pl-1">
+            <ToolButton
+              onClick={() => setShowCodex(true)}
+              title="元素图鉴 (Ctrl+K)"
+              badge={stats.uniqueCount}
+              label="图鉴"
+              active
+            >
+              📚
+            </ToolButton>
+            <ToolButton
+              onClick={() => setShowHistory(true)}
+              title="炼金记录 (Ctrl+H)"
+              badge={craftHistory.length}
+              label="记录"
+              active={showHistory}
+            >
+              📜
+            </ToolButton>
+            <ToolButton
+              onClick={() => setShowRelics(true)}
+              title="秘宝录：消耗品，用一次少一个"
+              badge={Object.values(relics).reduce((sum, n) => sum + n, 0)}
+              label="秘宝"
+              active={showRelics}
+            >
+              🏺
+            </ToolButton>
+            <ToolButton
+              onClick={() => setShowMap(true)}
+              title="世界地图：元素关系可视化"
+              label="地图"
+              active={showMap}
+            >
+              🗺️
+            </ToolButton>
+            <ToolButton
+              onClick={() => setShowAchievements(true)}
+              title="成就"
+              badge={Object.keys(achievements).length}
+              label="成就"
+              active={showAchievements}
+            >
+              🏆
+            </ToolButton>
+            <ToolButton onClick={handleExport} title="导出工作区 (ZIP)" label="导出">
+              💾
+            </ToolButton>
+            <ToolButton onClick={handleImportClick} title="导入工作区 (ZIP)" label="导入">
+              📂
+            </ToolButton>
+            <ToolButton onClick={handleTidyWorkspace} title="整理桌面：平铺所有卡片" label="整理">
+              🗂️
+            </ToolButton>
+            <ToolButton
+              onClick={handleClearWorkspace}
+              title="清空桌面"
+              label={confirmClear ? '确认清空？' : '清空桌面'}
+              active={confirmClear}
+            >
+              🧹
+            </ToolButton>
+            <ToolButton
+              onClick={() => setShowSettings(true)}
+              title="AI 设置"
+              label="AI 设置"
+              dot={!aiConfig.baseURL}
+            >
+              ⚙️
+            </ToolButton>
+            </div>
+          </div>
         </div>
         <input
           ref={fileInputRef}
