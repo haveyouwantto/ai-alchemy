@@ -52,6 +52,14 @@ const LEGACY_CATEGORY_ID_MAP: Record<string, string> = {
   tian_di_wan_xiang: 'cosmos',
 }
 
+/** 存档中桌面的紧凑元素引用：只存元素 id + 实例 uid + 位置（px，相对工作区容器左上角） */
+interface StoredElementRef {
+  instanceUid?: string
+  id: string
+  x?: number
+  y?: number
+}
+
 interface StoredWorkspace {
   elements: Element[]
   recipes: Recipe[]
@@ -67,6 +75,9 @@ interface StoredWorkspace {
 /**
  * 从 localStorage 加载持久化的工作区数据。
  * 兼容旧数据：无 categories/description/unlockedElements 时补默认；旧拼音类别 ID 迁移为英文 ID。
+ * 桌面元素支持两种格式：
+ * - 新格式：紧凑引用 { instanceUid, id, x, y }，加载时用图鉴模板还原完整元素；
+ * - 旧格式：完整元素对象（含 svg/description 等冗余字段）。
  */
 function loadStoredWorkspace(): StoredWorkspace {
   try {
@@ -83,10 +94,10 @@ function loadStoredWorkspace(): StoredWorkspace {
         const categories = Array.isArray(parsed.categories)
           ? parsed.categories.map((c) => ({ ...c, id: migId(c.id) }))
           : INITIAL_WORKSPACE.categories
-        const elements = parsed.elements.map((e) => ({
-          ...e,
-          categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
-        }))
+        const rawElements = parsed.elements as unknown as Array<Record<string, unknown>>
+        // 新格式没有 svg 字段 → 紧凑引用；旧格式每项都是完整元素
+        const isCompact = rawElements.length > 0 && !('svg' in rawElements[0])
+
         // 已解锁元素库：优先读存档；缺省时从当前实例推导（保证图鉴不因消耗而丢失元素）
         let unlockedElements: Element[]
         if (Array.isArray(parsed.unlockedElements) && parsed.unlockedElements.length > 0) {
@@ -94,11 +105,52 @@ function loadStoredWorkspace(): StoredWorkspace {
             ...e,
             categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
           }))
+        } else if (isCompact) {
+          // 紧凑存档缺图鉴时兜底为基础元素
+          unlockedElements = [...INITIAL_WORKSPACE.elements]
         } else {
           const map = new Map<string, Element>()
-          for (const e of elements) map.set(e.id, e)
+          for (const e of parsed.elements) map.set(e.id, e)
           unlockedElements = Array.from(map.values())
         }
+
+        // 模板索引：图鉴优先，基础元素兜底（保证桌面 id 总能还原）
+        const templateMap = new Map<string, Element>()
+        for (const t of unlockedElements) templateMap.set(t.id, t)
+        for (const t of INITIAL_ELEMENTS) {
+          if (!templateMap.has(t.id)) templateMap.set(t.id, t)
+        }
+
+        let elements: Element[]
+        const positions: Record<string, CardPosition> = {}
+        if (isCompact) {
+          // 新格式：按引用还原完整元素，位置随引用保存
+          elements = []
+          for (const ref of parsed.elements as StoredElementRef[]) {
+            if (!ref || typeof ref.id !== 'string') continue
+            const template = templateMap.get(ref.id)
+            if (!template) continue
+            const instanceUid = ref.instanceUid ?? uuid()
+            elements.push({ ...template, instanceUid })
+            if (Number.isFinite(ref.x) && Number.isFinite(ref.y)) {
+              positions[instanceUid] = { x: ref.x as number, y: ref.y as number }
+            }
+          }
+        } else {
+          // 旧格式：完整元素 + 独立位置表
+          elements = parsed.elements.map((e) => ({
+            ...e,
+            categoryId: e.categoryId ? migId(e.categoryId) : DEFAULT_CATEGORY_ID,
+          }))
+          if (parsed.positions && typeof parsed.positions === 'object') {
+            for (const [key, value] of Object.entries(parsed.positions)) {
+              if (value && Number.isFinite(value.x) && Number.isFinite(value.y)) {
+                positions[key] = { x: value.x, y: value.y }
+              }
+            }
+          }
+        }
+
         return {
           elements,
           recipes: parsed.recipes,
@@ -111,18 +163,7 @@ function loadStoredWorkspace(): StoredWorkspace {
                   h && typeof h.id === 'string' && typeof h.timestamp === 'number' && typeof h.recipeId === 'string',
               )
             : [],
-          // 桌面坐标：仅保留合法的有限数值
-          positions: (() => {
-            const positions: Record<string, CardPosition> = {}
-            if (parsed.positions && typeof parsed.positions === 'object') {
-              for (const [key, value] of Object.entries(parsed.positions)) {
-                if (value && Number.isFinite(value.x) && Number.isFinite(value.y)) {
-                  positions[key] = { x: value.x, y: value.y }
-                }
-              }
-            }
-            return positions
-          })(),
+          positions,
         }
       }
     }
@@ -213,12 +254,25 @@ export function useWorkspace() {
     stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory, positions }
   }, [elements, recipes, categories, unlockedElements, craftHistory, positions])
 
-  // 自动持久化到 localStorage（元素 + 配方 + 类别 + 图鉴 + 合成历史 + 桌面坐标）
+  // 自动持久化到 localStorage（桌面元素只存 id + 位置 + 实例 uid，其余字段运行时由图鉴还原）
   useEffect(() => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ elements, recipes, categories, unlockedElements, craftHistory, positions }),
+        JSON.stringify({
+          elements: elements.map((e) => {
+            const uid = e.instanceUid ?? ''
+            return {
+              instanceUid: uid,
+              id: e.id,
+              ...(positions[uid] ?? {}),
+            }
+          }),
+          recipes,
+          categories,
+          unlockedElements,
+          craftHistory,
+        }),
       )
     } catch {
       // ignore quota / privacy errors
@@ -775,11 +829,11 @@ export function useWorkspace() {
     [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, consumeInputs, bumpUseCount, unlockElements, addCraftHistoryEntry],
   )
 
-  /** 导出工作区为 ZIP（manifest.json 仅含基础信息，数据拆分独立 JSON 文件） */
+  /** 导出工作区为 ZIP（manifest.json 仅含基础信息，数据拆分独立 JSON 文件；桌面元素只含 id + 位置） */
   const exportWorkspace = useCallback(async (): Promise<Blob> => {
     const now = new Date()
     const manifest = {
-      formatVersion: 2,
+      formatVersion: 3,
       exportedAt: now.toISOString(),
       title: 'AI 炼金术工坊存档',
       files: {
@@ -788,17 +842,29 @@ export function useWorkspace() {
         categories: 'categories.json',
         unlockedElements: 'unlockedElements.json',
         craftHistory: 'craftHistory.json',
-        positions: 'positions.json',
       },
     }
     const zip = new JSZip()
     zip.file('manifest.json', JSON.stringify(manifest, null, 2))
-    zip.file('elements.json', JSON.stringify(stateRef.current.elements, null, 2))
+    zip.file(
+      'elements.json',
+      JSON.stringify(
+        stateRef.current.elements.map((e) => {
+          const uid = e.instanceUid ?? ''
+          return {
+            instanceUid: uid,
+            id: e.id,
+            ...(stateRef.current.positions[uid] ?? {}),
+          }
+        }),
+        null,
+        2,
+      ),
+    )
     zip.file('recipes.json', JSON.stringify(stateRef.current.recipes, null, 2))
     zip.file('categories.json', JSON.stringify(stateRef.current.categories, null, 2))
     zip.file('unlockedElements.json', JSON.stringify(stateRef.current.unlockedElements, null, 2))
     zip.file('craftHistory.json', JSON.stringify(stateRef.current.craftHistory, null, 2))
-    zip.file('positions.json', JSON.stringify(stateRef.current.positions ?? {}, null, 2))
     return await zip.generateAsync({ type: 'blob' })
   }, [])
 
@@ -836,13 +902,35 @@ export function useWorkspace() {
         const fileNames = (manifest as { files?: Record<string, string> }).files ?? {}
         const nameOf = (key: string, fallback: string) => fileNames[key] ?? fallback
 
-        let data: Workspace & {
+        let data: {
+          elements: Array<Element | StoredElementRef>
+          recipes: Recipe[]
+          categories?: ElementCategory[]
           unlockedElements?: Element[]
           craftHistory?: CraftHistoryEntry[]
           positions?: Record<string, CardPosition>
         } | null = null
 
-        if (manifest.formatVersion === 2) {
+        if (manifest.formatVersion === 3) {
+          // v3 新格式：桌面元素为紧凑引用（id + 位置），完整模板由图鉴还原
+          const [rawElements, recipes, categories, unlockedElements, craftHistory] = await Promise.all([
+            readJson<Array<Element | StoredElementRef>>(nameOf('elements', 'elements.json')),
+            readJson<Recipe[]>(nameOf('recipes', 'recipes.json')),
+            readJson<ElementCategory[]>(nameOf('categories', 'categories.json')),
+            readJson<Element[]>(nameOf('unlockedElements', 'unlockedElements.json')),
+            readJson<CraftHistoryEntry[]>(nameOf('craftHistory', 'craftHistory.json')),
+          ])
+          if (Array.isArray(rawElements) && Array.isArray(recipes)) {
+            data = {
+              elements: rawElements,
+              recipes,
+              categories: categories ?? [],
+              unlockedElements: unlockedElements ?? undefined,
+              craftHistory: craftHistory ?? undefined,
+            }
+          }
+        } else if (manifest.formatVersion === 2) {
+          // v2 旧格式：完整元素 + 独立 positions.json
           const [elements, recipes, categories, unlockedElements, craftHistory, positions] = await Promise.all([
             readJson<Element[]>(nameOf('elements', 'elements.json')),
             readJson<Recipe[]>(nameOf('recipes', 'recipes.json')),
@@ -890,34 +978,11 @@ export function useWorkspace() {
         const validCategoryIds = new Set(importedCategories.map((c) => c.id))
         const defaultCategoryId = importedCategories[0]?.id ?? DEFAULT_CATEGORY_ID
 
-        // 规范化导入的元素（保证字段完整，并为每个实例分配独立 instanceUid）
-        const importedElements: Element[] = data.elements
-          .filter((e) => e && typeof e.id === 'string' && typeof e.name === 'string')
-          .map((e) => ({
-            id: normalizeId(e.id) || normalizeId(e.name),
-            name: e.name,
-            description: e.description ?? '',
-            categoryId: validCategoryIds.has(e.categoryId) ? e.categoryId : defaultCategoryId,
-            svg: typeof e.svg === 'string' ? sanitizeSVG(e.svg) : '',
-            createdAt: typeof e.createdAt === 'number' ? e.createdAt : Date.now(),
-            useCount: typeof e.useCount === 'number' ? e.useCount : 0,
-            isForeign: e.isForeign,
-            instanceUid: e.instanceUid ?? uuid(),
-          }))
-
-        // 桌面坐标：key=instanceUid；仅保留与导入实例匹配的合法坐标（无坐标的卡片将由工作区自动摆位）
-        const importedUids = new Set(importedElements.map((e) => e.instanceUid).filter((u): u is string => !!u))
-        const importedPositions: Record<string, CardPosition> = {}
-        if (data.positions && typeof data.positions === 'object') {
-          for (const [key, value] of Object.entries(data.positions)) {
-            if (importedUids.has(key) && value && Number.isFinite(value.x) && Number.isFinite(value.y)) {
-              importedPositions[key] = { x: value.x, y: value.y }
-            }
-          }
-        }
+        const isCompactElements =
+          Array.isArray(data.elements) && data.elements.length > 0 && !('svg' in (data.elements[0] as object))
 
         // 已解锁元素库（缺省从导入元素推导）
-        const importedUnlocked: Element[] =
+        let importedUnlocked: Element[] =
           Array.isArray(data.unlockedElements) && data.unlockedElements.length > 0
             ? data.unlockedElements
                 .filter((e) => e && typeof e.id === 'string')
@@ -931,7 +996,54 @@ export function useWorkspace() {
                   useCount: e.useCount ?? 0,
                   isForeign: e.isForeign,
                 }))
-            : importedElements.map((e) => ({ ...e, instanceUid: undefined }))
+            : isCompactElements
+              ? INITIAL_WORKSPACE.elements.map((e) => ({ ...e }))
+              : []
+
+        // 桌面元素 + 位置：v3 紧凑引用用图鉴模板还原；旧格式直接规范化完整元素
+        const importedPositions: Record<string, CardPosition> = {}
+        let importedElements: Element[]
+        if (isCompactElements) {
+          const templateMap = new Map(importedUnlocked.map((e) => [e.id, e]))
+          importedElements = []
+          for (const ref of data.elements as StoredElementRef[]) {
+            if (!ref || typeof ref.id !== 'string') continue
+            const template = templateMap.get(ref.id)
+            if (!template) continue
+            const instanceUid = ref.instanceUid ?? uuid()
+            importedElements.push({ ...template, instanceUid })
+            if (Number.isFinite(ref.x) && Number.isFinite(ref.y)) {
+              importedPositions[instanceUid] = { x: ref.x as number, y: ref.y as number }
+            }
+          }
+        } else {
+          importedElements = (data.elements as Element[])
+            .filter((e) => e && typeof e.id === 'string' && typeof e.name === 'string')
+            .map((e) => ({
+              id: normalizeId(e.id) || normalizeId(e.name),
+              name: e.name,
+              description: e.description ?? '',
+              categoryId: validCategoryIds.has(e.categoryId) ? e.categoryId : defaultCategoryId,
+              svg: typeof e.svg === 'string' ? sanitizeSVG(e.svg) : '',
+              createdAt: typeof e.createdAt === 'number' ? e.createdAt : Date.now(),
+              useCount: typeof e.useCount === 'number' ? e.useCount : 0,
+              isForeign: e.isForeign,
+              instanceUid: e.instanceUid ?? uuid(),
+            }))
+          // 旧格式缺图鉴时从实例推导
+          if (importedUnlocked.length === 0) {
+            importedUnlocked = importedElements.map((e) => ({ ...e, instanceUid: undefined }))
+          }
+          // 旧格式位置表：key=instanceUid；仅保留与导入实例匹配的合法坐标
+          const importedUids = new Set(importedElements.map((e) => e.instanceUid).filter((u): u is string => !!u))
+          if (data.positions && typeof data.positions === 'object') {
+            for (const [key, value] of Object.entries(data.positions)) {
+              if (importedUids.has(key) && value && Number.isFinite(value.x) && Number.isFinite(value.y)) {
+                importedPositions[key] = { x: value.x, y: value.y }
+              }
+            }
+          }
+        }
 
         // 规范化导入的配方（过滤不存在的元素引用）。
         // ★ 必须用「已解锁图鉴库 + 桌面实例」的并集来验证 ID：
