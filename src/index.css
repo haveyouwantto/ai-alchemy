@@ -48,6 +48,13 @@ body {
   width: 72px;
 }
 
+/* 小屏（<640px）：卡片尺寸更小，宽度同步收窄 */
+@media (max-width: 639px) {
+  .element-card {
+    width: 60px;
+  }
+}
+
 /* SVG 渲染容器：防止外部尺寸被拉伸 */
 .svg-shell svg {
   width: 100%;
