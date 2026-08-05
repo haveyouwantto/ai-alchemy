@@ -43,6 +43,11 @@ body {
   -webkit-touch-callout: none;
 }
 
+/* 工作区元素卡：固定宽度，高度自适应 */
+.element-card {
+  width: 72px;
+}
+
 /* SVG 渲染容器：防止外部尺寸被拉伸 */
 .svg-shell svg {
   width: 100%;
