@@ -322,14 +322,14 @@ export default function App() {
           <ToolButton onClick={() => setShowCodex(true)} title="元素图鉴 (Ctrl+K)" active>
             <span className="text-lg leading-none">📚</span>
             <span className="hidden sm:inline">图鉴</span>
-            <span className="rounded-full bg-amber-400/20 px-1.5 text-xs font-bold text-amber-300">
+            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
               {stats.uniqueCount}
             </span>
           </ToolButton>
           <ToolButton onClick={() => setShowHistory(true)} title="炼金记录 (Ctrl+H)" active={showHistory}>
             <span className="text-lg leading-none">📜</span>
             <span className="hidden sm:inline">记录</span>
-            <span className="rounded-full bg-amber-400/20 px-1.5 text-xs font-bold text-amber-300">
+            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
               {craftHistory.length}
             </span>
           </ToolButton>

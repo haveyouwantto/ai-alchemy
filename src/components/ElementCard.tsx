@@ -89,15 +89,27 @@ function ElementCardInner({
         </div>
       )}
       <span
-        className="mt-1 truncate text-center font-serif font-medium text-amber-100"
-        style={{ fontSize: size * 0.13, maxWidth: size * 0.9 }}
+        className="mt-1 block text-center font-serif font-medium text-amber-100"
+        style={{
+          fontSize: size * 0.13,
+          maxWidth: size * 0.9,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
         title={element.name}
       >
         {element.name}
       </span>
       <span
-        className="truncate text-center font-mono text-amber-200/60"
-        style={{ fontSize: size * 0.08, maxWidth: size * 0.85 }}
+        className="block text-center font-mono text-amber-200/60"
+        style={{
+          fontSize: size * 0.08,
+          maxWidth: size * 0.85,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
         title={element.id}
       >
         {element.id}
