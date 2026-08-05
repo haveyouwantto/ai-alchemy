@@ -51,7 +51,7 @@ body {
 /* 小屏（<640px）：卡片尺寸更小，宽度同步收窄 */
 @media (max-width: 639px) {
   .element-card {
-    width: 60px;
+    width: 48px;
   }
 }
 

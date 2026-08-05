@@ -16,7 +16,7 @@ interface WorldMapProps {
 type GraphNode = NodeObject<Element>
 
 /** 节点绘制半径（世界坐标单位；随缩放一起变化） */
-const NODE_R = 14
+const NODE_R = 8
 
 export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }: WorldMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
