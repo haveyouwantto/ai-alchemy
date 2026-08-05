@@ -27,6 +27,8 @@ interface WorkspaceProps {
   tidyVersion: number
   onSelect: (index: number) => void
   onCraft: (a: Element, b: Element) => void
+  /** 秘宝与元素结合：触发特殊反应（黑化拆解） */
+  onDecompose: (relic: Element, element: Element) => void
   onDuplicate: (element: Element) => void
   onOpenLibrary: () => void
   /** 拖入垃圾桶时删除对应实例 */
@@ -137,6 +139,7 @@ export function Workspace({
   tidyVersion,
   onSelect,
   onCraft,
+  onDecompose,
   onDuplicate,
   onOpenLibrary,
   onDeleteToTrash,
@@ -501,7 +504,20 @@ export function Workspace({
               : anchor
                 ? { ...anchor }
                 : null)
-          onCraft(elements[aIndex], elements[bIndex])
+          const aEl = elements[aIndex]
+          const bEl = elements[bIndex]
+          const aIsRelic = !!aEl.relicId
+          const bIsRelic = !!bEl.relicId
+          if (aIsRelic || bIsRelic) {
+            // 秘宝 + 秘宝：无反应；秘宝 + 元素：触发特殊反应
+            if (!(aIsRelic && bIsRelic)) {
+              const relicEl = aIsRelic ? aEl : bEl
+              const elemEl = aIsRelic ? bEl : aEl
+              onDecompose(relicEl, elemEl)
+            }
+          } else {
+            onCraft(elements[aIndex], elements[bIndex])
+          }
         }
         activeStartPos.current = null
         return
@@ -532,7 +548,7 @@ export function Workspace({
       }
       activeStartPos.current = null
     },
-    [elements, onCraft, onSelect, handleDeleteToTrash, positions, getCardSize, onPositionsChange],
+    [elements, onCraft, onDecompose, onSelect, handleDeleteToTrash, positions, getCardSize, onPositionsChange],
   )
 
   const handleDragCancel = useCallback(() => {

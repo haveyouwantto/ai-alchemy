@@ -14,6 +14,13 @@ import type {
   Workspace,
 } from '../types'
 import { DEFAULT_CATEGORY_ID, FUNCTIONS, INITIAL_ELEMENTS, INITIAL_WORKSPACE, SYSTEM_PROMPT_TEMPLATE } from '../constants'
+import {
+  DECOMPOSE_SYSTEM_PROMPT,
+  INITIAL_RELIC_COUNTS,
+  RELIC_REWARD_NEW_ELEMENTS,
+  RELIC_PROMPTS,
+  RELIC_TEMPLATES,
+} from '../constants'
 import { parseToolArguments, streamChatCompletion } from '../aiClient'
 import { sanitizeSVG, uuid } from '../utils'
 
@@ -31,6 +38,8 @@ export type CraftOutcome =
       recipeCount: number
       /** 本次 AI 新创建的元素（仅真正新建的，未重复已有） */
       newElements: Element[]
+      /** 本次合成奖励的秘宝数量（每合成 10 个新元素 +1 黑化） */
+      relicReward?: number
       /** 炼金术笔记（流式思考文本） */
       note?: string
     }
@@ -43,6 +52,8 @@ interface StateRef {
   unlockedElements: Element[]
   craftHistory: CraftHistoryEntry[]
   positions: Record<string, CardPosition>
+  relics: Record<string, number>
+  newElementCount: number
 }
 
 const STORAGE_KEY = 'alchemy-workspace-data'
@@ -58,6 +69,7 @@ interface StoredElementRef {
   id: string
   x?: number
   y?: number
+  relicId?: string
 }
 
 interface StoredWorkspace {
@@ -70,6 +82,10 @@ interface StoredWorkspace {
   craftHistory: CraftHistoryEntry[]
   /** 桌面卡片坐标（key=instanceUid，单位 px，相对工作区容器左上角） */
   positions?: Record<string, CardPosition>
+  /** 秘宝库存（key=秘宝 id） */
+  relics?: Record<string, number>
+  /** 累计合成出的新元素数量（用于秘宝奖励） */
+  newElementCount?: number
 }
 
 /**
@@ -87,6 +103,8 @@ function loadStoredWorkspace(): StoredWorkspace {
         unlockedElements?: Element[]
         craftHistory?: CraftHistoryEntry[]
         positions?: Record<string, CardPosition>
+        relics?: Record<string, number>
+        newElementCount?: number
       }
       if (Array.isArray(parsed.elements) && Array.isArray(parsed.recipes)) {
         // 仅迁移类别 ID（元素 ID 不迁移：wind 等 ID 让 AI 自由创建「风」）
@@ -120,6 +138,10 @@ function loadStoredWorkspace(): StoredWorkspace {
         for (const t of INITIAL_ELEMENTS) {
           if (!templateMap.has(t.id)) templateMap.set(t.id, t)
         }
+        // 秘宝模板：桌面上的秘宝卡片同样按 id 还原
+        for (const t of RELIC_TEMPLATES) {
+          if (!templateMap.has(t.id)) templateMap.set(t.id, t)
+        }
 
         let elements: Element[]
         const positions: Record<string, CardPosition> = {}
@@ -131,7 +153,7 @@ function loadStoredWorkspace(): StoredWorkspace {
             const template = templateMap.get(ref.id)
             if (!template) continue
             const instanceUid = ref.instanceUid ?? uuid()
-            elements.push({ ...template, instanceUid })
+            elements.push({ ...template, instanceUid, ...(ref.relicId ? { relicId: ref.relicId } : {}) })
             if (Number.isFinite(ref.x) && Number.isFinite(ref.y)) {
               positions[instanceUid] = { x: ref.x as number, y: ref.y as number }
             }
@@ -164,13 +186,35 @@ function loadStoredWorkspace(): StoredWorkspace {
               )
             : [],
           positions,
+          // 秘宝库存：仅保留非负整数
+          relics: (() => {
+            const relics: Record<string, number> = {}
+            if (parsed.relics && typeof parsed.relics === 'object') {
+              for (const [key, value] of Object.entries(parsed.relics)) {
+                const n = Number(value)
+                if (Number.isFinite(n) && n >= 0) relics[key] = Math.floor(n)
+              }
+            }
+            return Object.keys(relics).length > 0 ? relics : { ...INITIAL_RELIC_COUNTS }
+          })(),
+          newElementCount:
+            typeof parsed.newElementCount === 'number' && Number.isFinite(parsed.newElementCount)
+              ? Math.max(0, Math.floor(parsed.newElementCount))
+              : 0,
         }
       }
     }
   } catch {
     // ignore corrupted storage
   }
-  return { ...INITIAL_WORKSPACE, unlockedElements: INITIAL_WORKSPACE.elements, craftHistory: [], positions: {} }
+  return {
+    ...INITIAL_WORKSPACE,
+    unlockedElements: INITIAL_WORKSPACE.elements,
+    craftHistory: [],
+    positions: {},
+    relics: { ...INITIAL_RELIC_COUNTS },
+    newElementCount: 0,
+  }
 }
 
 /** 规范化元素 ID：小写字符 + 下划线 */
@@ -232,6 +276,8 @@ export function useWorkspace() {
       }),
       craftHistory: stored.craftHistory,
       positions,
+      relics: stored.relics ?? { ...INITIAL_RELIC_COUNTS },
+      newElementCount: stored.newElementCount ?? 0,
     }
   }, [])
 
@@ -244,15 +290,28 @@ export function useWorkspace() {
   const [craftHistory, setCraftHistory] = useState<CraftHistoryEntry[]>(initial.craftHistory)
   /** 桌面卡片坐标（key=instanceUid，单位 px） */
   const [positions, setPositions] = useState<Record<string, CardPosition>>(initial.positions)
+  /** 秘宝库存（key=秘宝 id → 数量） */
+  const [relics, setRelics] = useState<Record<string, number>>(initial.relics)
+  /** 累计合成出的新元素数量（用于秘宝奖励） */
+  const [newElementCount, setNewElementCount] = useState(initial.newElementCount)
 
   // 正在合成中（防止重复拖拽）
   const [isCrafting, setIsCrafting] = useState(false)
 
   // 引用，用于异步回调中读取最新状态
-  const stateRef = useRef<StateRef>({ elements, recipes, categories, unlockedElements, craftHistory: [], positions })
+  const stateRef = useRef<StateRef>({
+    elements,
+    recipes,
+    categories,
+    unlockedElements,
+    craftHistory: [],
+    positions,
+    relics,
+    newElementCount,
+  })
   useEffect(() => {
-    stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory, positions }
-  }, [elements, recipes, categories, unlockedElements, craftHistory, positions])
+    stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount }
+  }, [elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount])
 
   // 自动持久化到 localStorage（桌面元素只存 id + 位置 + 实例 uid，其余字段运行时由图鉴还原）
   useEffect(() => {
@@ -265,6 +324,7 @@ export function useWorkspace() {
             return {
               instanceUid: uid,
               id: e.id,
+              ...(e.relicId ? { relicId: e.relicId } : {}),
               ...(positions[uid] ?? {}),
             }
           }),
@@ -272,12 +332,14 @@ export function useWorkspace() {
           categories,
           unlockedElements,
           craftHistory,
+          relics,
+          newElementCount,
         }),
       )
     } catch {
       // ignore quota / privacy errors
     }
-  }, [elements, recipes, categories, unlockedElements, craftHistory, positions])
+  }, [elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount])
 
   /** 查找本地配方（双向匹配） */
   const findLocalRecipe = useCallback(
@@ -336,6 +398,24 @@ export function useWorkspace() {
     setElements((prev) => [...prev, ...instances])
   }, [])
 
+  /** 部署秘宝到桌面：库存 -1，返回生成的桌面实例（库存不足返回 null） */
+  const deployRelic = useCallback((relicId: string): Element | null => {
+    const template = RELIC_TEMPLATES.find((t) => t.relicId === relicId)
+    if (!template) return null
+    if ((stateRef.current.relics[relicId] ?? 0) <= 0) return null
+    setRelics((prev) => ({ ...prev, [relicId]: Math.max(0, (prev[relicId] ?? 0) - 1) }))
+    const instance: Element = { ...template, createdAt: Date.now(), instanceUid: uuid() }
+    setElements((prev) => [...prev, instance])
+    return instance
+  }, [])
+
+  /** 返还秘宝：桌面实例被删除（拖垃圾桶/清空桌面）时库存 +1 */
+  const refundRelic = useCallback((instanceUid: string) => {
+    const el = stateRef.current.elements.find((e) => e.instanceUid === instanceUid)
+    if (!el?.relicId) return
+    setRelics((prev) => ({ ...prev, [el.relicId!]: (prev[el.relicId!] ?? 0) + 1 }))
+  }, [])
+
   /**
    * 清空桌面：仅清空桌面上的元素实例为初始四基础元素。
    * 保留：配方书、图鉴（已解锁库）、类别、合成历史 —— 玩家的进度不会丢失。
@@ -362,6 +442,8 @@ export function useWorkspace() {
     setUnlockedElements(INITIAL_WORKSPACE.elements)
     setCraftHistory([])
     setPositions({})
+    setRelics({ ...INITIAL_RELIC_COUNTS })
+    setNewElementCount(0)
   }, [])
 
   /** 向合成历史追加一条记录（无数量上限，前端分页展示） */
@@ -818,6 +900,20 @@ export function useWorkspace() {
           note: finalNote || undefined,
         })
 
+        // 秘宝奖励：每合成出 10 个新元素，奖励 1 个黑化
+        let relicReward = 0
+        if (newElements.length > 0) {
+          const prevCount = stateRef.current.newElementCount
+          const nextCount = prevCount + newElements.length
+          const awarded =
+            Math.floor(nextCount / RELIC_REWARD_NEW_ELEMENTS) - Math.floor(prevCount / RELIC_REWARD_NEW_ELEMENTS)
+          if (awarded > 0) {
+            setRelics((prev) => ({ ...prev, blackening: (prev.blackening ?? 0) + awarded }))
+            relicReward = awarded
+          }
+          setNewElementCount(nextCount)
+        }
+
         onMessage('凝固新元素...')
         return {
           type: 'ai',
@@ -826,6 +922,7 @@ export function useWorkspace() {
           newCount: newElements.length,
           recipeCount: 1,
           newElements,
+          relicReward: relicReward > 0 ? relicReward : undefined,
           note: finalNote || undefined,
         }
       } finally {
@@ -835,11 +932,224 @@ export function useWorkspace() {
     [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, consumeInputs, bumpUseCount, unlockElements, addCraftHistoryEntry],
   )
 
+  /** 黑化秘宝：与元素结合，把该元素拆解为 1~3 个组成它的概念元素（消耗秘宝与元素） */
+  const decomposeElement = useCallback(
+    async (
+      relic: Element,
+      element: Element,
+      aiConfig: AIConfig | null,
+      onMessage: (msg: string) => void,
+      onStream?: (text: string) => void,
+    ): Promise<CraftOutcome> => {
+      if (isCrafting) return { type: 'error', message: '正在合成中，请稍候' }
+      if (!relic.relicId) return { type: 'error', message: '这不是秘宝' }
+      if (element.relicId) return { type: 'error', message: '秘宝只能与元素结合' }
+      if (!aiConfig || !aiConfig.baseURL.trim() || !aiConfig.apiKey.trim()) {
+        return { type: 'error', message: '尚未配置 AI，无法触发黑化' }
+      }
+      setIsCrafting(true)
+      try {
+        onMessage(`${relic.name}侵蚀中...`)
+        const prompt = RELIC_PROMPTS[relic.relicId ?? ''] ?? DECOMPOSE_SYSTEM_PROMPT
+        const messages: ChatMessage[] = [
+          { role: 'system', content: prompt },
+          {
+            role: 'user',
+            content: `【待拆解元素】${element.name}（ID: ${element.id}，类别：${
+              stateRef.current.categories.find((c) => c.id === element.categoryId)?.name ?? element.categoryId
+            }）${element.description ? `：${element.description}` : ''}\n\n请使用「${relic.name}」把它拆解为 1~3 个组成它的概念元素，并调用 craft_elements 创建。`,
+          },
+        ]
+
+        const newElements: Element[] = []
+        const createdCategories: ElementCategory[] = []
+        let note = ''
+        let lastError = ''
+
+        for (let round = 0; round < MAX_AI_ROUNDS; round++) {
+          const result = await streamChatCompletion(aiConfig, messages, [...FUNCTIONS], (text) => {
+            note += text
+            onStream?.(text)
+            onMessage(`${relic.name}侵蚀中...`)
+          })
+          if (!result.ok) return { type: 'error', message: result.error }
+          messages.push(result.message)
+          const toolCalls = result.message.tool_calls ?? []
+          if (toolCalls.length === 0) {
+            if (newElements.length === 0) {
+              return { type: 'error', message: lastError || '模型未产出概念元素，请重试' }
+            }
+            break
+          }
+
+          let toolError: string | null = null
+          for (const tc of toolCalls) {
+            if (toolError) break
+            if (tc.function.name === 'create_category') {
+              const args = parseToolArguments<CreateCategoryArgs>(tc.function.arguments)
+              const draft = args?.category
+              if (!draft || typeof draft !== 'object') {
+                toolError = 'create_category 缺少 category 参数'
+                break
+              }
+              const catId = normalizeId(draft.id)
+              const catName = draft.name?.trim()
+              const catIcon = draft.icon?.trim()
+              const catDesc = draft.description?.trim()
+              if (!catId) toolError = 'create_category 的 id 缺失或非法（需小写字母/数字/下划线）'
+              else if (!catName) toolError = 'create_category 的 name 缺失'
+              else if (!catIcon) toolError = 'create_category 的 icon 缺失'
+              else if (!catDesc) toolError = 'create_category 的 description 缺失'
+              else if (
+                stateRef.current.categories.some((c) => c.id === catId) ||
+                createdCategories.some((c) => c.id === catId)
+              ) {
+                toolError = `create_category 的 id「${catId}」已存在，请换一个`
+              } else {
+                createdCategories.push({
+                  id: catId,
+                  name: catName,
+                  icon: sanitizeSVG(catIcon),
+                  description: catDesc,
+                  createdAt: Date.now(),
+                })
+              }
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: toolError
+                  ? JSON.stringify({ error: toolError })
+                  : JSON.stringify({ ok: true, created_categories: createdCategories.map((c) => c.id) }),
+              })
+            } else if (tc.function.name === 'craft_elements') {
+              const args = parseToolArguments<CraftElementsArgs>(tc.function.arguments)
+              const drafts = args?.new_elements
+              if (!Array.isArray(drafts) || drafts.length === 0) {
+                toolError = 'craft_elements 的 new_elements 缺失或为空'
+                messages.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  content: JSON.stringify({ error: toolError }),
+                })
+                break
+              }
+              const createdResults: Array<{ name: string; id: string }> = []
+              for (let i = 0; i < drafts.length; i++) {
+                if (toolError) break
+                const draft = drafts[i]
+                const name = draft.name?.trim()
+                const elementId = normalizeId(draft.id)
+                const desc = draft.description?.trim()
+                const svgRaw = draft.svg_content?.trim()
+                const catRaw = draft.category_id?.trim()
+                const existingByName = name
+                  ? stateRef.current.unlockedElements.find((e) => e.name === name)
+                  : undefined
+                const existingById = elementId ? stateRef.current.unlockedElements.find((e) => e.id === elementId) : undefined
+                const existing = existingByName ?? existingById
+                if (existing) {
+                  const catName =
+                    stateRef.current.categories.find((c) => c.id === existing.categoryId)?.name ?? existing.categoryId
+                  toolError =
+                    `new_elements[${i}] 与已有元素重复（id=${existing.id}, name="${existing.name}", ` +
+                    `category="${catName}(id=${existing.categoryId})", description="${existing.description}"）。` +
+                    `请直接引用已有元素 ID「${existing.id}」作为产物，不要重复创建；如需全新元素请换一个不同的 id 和 name`
+                  break
+                }
+                if (!name) toolError = `new_elements[${i}] 的 name 缺失`
+                else if (!elementId) toolError = `new_elements[${i}]（${name}）的 id 缺失或非法（需小写字母/数字/下划线）`
+                else if (!desc) toolError = `new_elements[${i}]（${name}）的 description 缺失`
+                else if (!svgRaw) toolError = `new_elements[${i}]（${name}）的 svg_content 缺失`
+                else if (!catRaw) toolError = `new_elements[${i}]（${name}）的 category_id 缺失，必须引用已有类别或先调用 create_category`
+                else {
+                  const categoryId = normalizeId(catRaw)
+                  const categoryValid =
+                    stateRef.current.categories.some((c) => c.id === categoryId) ||
+                    createdCategories.some((c) => c.id === categoryId)
+                  if (!categoryValid) {
+                    toolError = `new_elements[${i}]（${name}）的 category_id「${categoryId}」不存在，请改用已有类别或先调用 create_category`
+                  } else {
+                    const nameTaken =
+                      stateRef.current.elements.some((e) => e.name === name) ||
+                      newElements.some((e) => e.name === name)
+                    const finalName = nameTaken ? `${name}(异界)` : name
+                    let finalId = elementId
+                    if (
+                      stateRef.current.unlockedElements.some((e) => e.id === finalId) ||
+                      newElements.some((e) => e.id === finalId)
+                    ) {
+                      finalId = `${finalId}_${newElements.length + createdCategories.length + 1}`
+                    }
+                    newElements.push({
+                      id: finalId,
+                      name: finalName,
+                      description: desc,
+                      categoryId,
+                      svg: sanitizeSVG(svgRaw),
+                      createdAt: Date.now(),
+                      useCount: 0,
+                      isForeign: nameTaken,
+                    })
+                    createdResults.push({ name: finalName, id: finalId })
+                  }
+                }
+              }
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: toolError
+                  ? JSON.stringify({ error: toolError })
+                  : JSON.stringify({ created: createdResults }),
+              })
+            } else if (tc.function.name === 'craft_recipe') {
+              toolError = '拆解模式不需要调用 craft_recipe，直接调用 craft_elements 创建概念元素'
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: JSON.stringify({ error: toolError }),
+              })
+            }
+          }
+          if (toolError) lastError = toolError
+          // 已有产出且本轮无错误 → 提前结束
+          if (newElements.length > 0 && !toolError) break
+        }
+
+        if (newElements.length === 0) {
+          return { type: 'error', message: lastError || '黑化失败：未产出概念元素' }
+        }
+
+        // 保存新类别、解锁概念、消耗秘宝与元素、产出实例
+        if (createdCategories.length > 0) {
+          setCategories((prev) => [...prev, ...createdCategories])
+        }
+        unlockElements(newElements)
+        consumeInputs(relic, element)
+        const producedInstances: Element[] = newElements.map((t) => ({ ...t, instanceUid: uuid() }))
+        setElements((prev) => [...prev, ...producedInstances])
+
+        onMessage('概念析出...')
+        return {
+          type: 'ai',
+          added: producedInstances.map((e) => ({ ...e })),
+          known: [],
+          newCount: newElements.length,
+          recipeCount: 0,
+          newElements: newElements.map((e) => ({ ...e })),
+          note: note.trim() || undefined,
+        }
+      } finally {
+        setIsCrafting(false)
+      }
+    },
+    [isCrafting, consumeInputs, unlockElements],
+  )
+
   /** 导出工作区为 ZIP（manifest.json 仅含基础信息，数据拆分独立 JSON 文件；桌面元素只含 id + 位置） */
   const exportWorkspace = useCallback(async (): Promise<Blob> => {
     const now = new Date()
     const manifest = {
-      formatVersion: 3,
+      formatVersion: 4,
       exportedAt: now.toISOString(),
       title: 'AI 炼金术工坊存档',
       files: {
@@ -848,6 +1158,7 @@ export function useWorkspace() {
         categories: 'categories.json',
         unlockedElements: 'unlockedElements.json',
         craftHistory: 'craftHistory.json',
+        relics: 'relics.json',
       },
     }
     const zip = new JSZip()
@@ -871,6 +1182,17 @@ export function useWorkspace() {
     zip.file('categories.json', JSON.stringify(stateRef.current.categories, null, 2))
     zip.file('unlockedElements.json', JSON.stringify(stateRef.current.unlockedElements, null, 2))
     zip.file('craftHistory.json', JSON.stringify(stateRef.current.craftHistory, null, 2))
+    zip.file(
+      'relics.json',
+      JSON.stringify(
+        {
+          relics: stateRef.current.relics,
+          newElementCount: stateRef.current.newElementCount,
+        },
+        null,
+        2,
+      ),
+    )
     return await zip.generateAsync({ type: 'blob' })
   }, [])
 
@@ -915,9 +1237,30 @@ export function useWorkspace() {
           unlockedElements?: Element[]
           craftHistory?: CraftHistoryEntry[]
           positions?: Record<string, CardPosition>
+          relicsData?: { relics?: Record<string, number>; newElementCount?: number }
         } | null = null
 
-        if (manifest.formatVersion === 3) {
+        if (manifest.formatVersion === 4) {
+          // v4 新格式：桌面元素紧凑引用 + 秘宝库存
+          const [rawElements, recipes, categories, unlockedElements, craftHistory, relicsData] = await Promise.all([
+            readJson<Array<Element | StoredElementRef>>(nameOf('elements', 'elements.json')),
+            readJson<Recipe[]>(nameOf('recipes', 'recipes.json')),
+            readJson<ElementCategory[]>(nameOf('categories', 'categories.json')),
+            readJson<Element[]>(nameOf('unlockedElements', 'unlockedElements.json')),
+            readJson<CraftHistoryEntry[]>(nameOf('craftHistory', 'craftHistory.json')),
+            readJson<{ relics?: Record<string, number>; newElementCount?: number }>(nameOf('relics', 'relics.json')),
+          ])
+          if (Array.isArray(rawElements) && Array.isArray(recipes)) {
+            data = {
+              elements: rawElements,
+              recipes,
+              categories: categories ?? [],
+              unlockedElements: unlockedElements ?? undefined,
+              craftHistory: craftHistory ?? undefined,
+              relicsData: relicsData ?? undefined,
+            }
+          }
+        } else if (manifest.formatVersion === 3) {
           // v3 新格式：桌面元素为紧凑引用（id + 位置），完整模板由图鉴还原
           const [rawElements, recipes, categories, unlockedElements, craftHistory] = await Promise.all([
             readJson<Array<Element | StoredElementRef>>(nameOf('elements', 'elements.json')),
@@ -970,6 +1313,20 @@ export function useWorkspace() {
           return { ok: false, message: 'manifest.json 格式不正确或数据文件缺失' }
         }
 
+        // 秘宝库存（v4 存档；旧版本回退初始值）
+        const importedRelics: Record<string, number> = { ...INITIAL_RELIC_COUNTS }
+        if (data.relicsData?.relics && typeof data.relicsData.relics === 'object') {
+          for (const [key, value] of Object.entries(data.relicsData.relics)) {
+            const n = Number(value)
+            if (Number.isFinite(n) && n >= 0) importedRelics[key] = Math.floor(n)
+          }
+        }
+        const importedNewElementCount =
+          typeof data.relicsData?.newElementCount === 'number' &&
+          Number.isFinite(data.relicsData.newElementCount)
+            ? Math.max(0, Math.floor(data.relicsData.newElementCount))
+            : 0
+
         // 规范化类别（保证字段完整）
         const importedCategories: ElementCategory[] = Array.isArray(data.categories)
           ? data.categories.map((c) => ({
@@ -1011,13 +1368,16 @@ export function useWorkspace() {
         let importedElements: Element[]
         if (isCompactElements) {
           const templateMap = new Map(importedUnlocked.map((e) => [e.id, e]))
+          for (const t of RELIC_TEMPLATES) {
+            if (!templateMap.has(t.id)) templateMap.set(t.id, t)
+          }
           importedElements = []
           for (const ref of data.elements as StoredElementRef[]) {
             if (!ref || typeof ref.id !== 'string') continue
             const template = templateMap.get(ref.id)
             if (!template) continue
             const instanceUid = ref.instanceUid ?? uuid()
-            importedElements.push({ ...template, instanceUid })
+            importedElements.push({ ...template, instanceUid, ...(ref.relicId ? { relicId: ref.relicId } : {}) })
             if (Number.isFinite(ref.x) && Number.isFinite(ref.y)) {
               importedPositions[instanceUid] = { x: ref.x as number, y: ref.y as number }
             }
@@ -1114,6 +1474,8 @@ export function useWorkspace() {
         setUnlockedElements(importedUnlocked)
         setCraftHistory(importedHistory)
         setPositions(importedPositions)
+        setRelics(importedRelics)
+        setNewElementCount(importedNewElementCount)
         return {
           ok: true,
           message: `成功导入 ${importedElements.length} 个元素、${importedRecipes.length} 条配方、${importedCategories.length} 个类别、${importedHistory.length} 条历史`,
@@ -1163,8 +1525,11 @@ export function useWorkspace() {
     craftHistory,
     positions,
     setPositions,
+    relics,
+    newElementCount,
     isCrafting,
     craft,
+    decomposeElement,
     exportWorkspace,
     importWorkspace,
     getExportFilename,
@@ -1173,6 +1538,8 @@ export function useWorkspace() {
     removeElementInstance,
     addElementFromLibrary,
     addElementInstances,
+    deployRelic,
+    refundRelic,
     resetWorkspace,
     clearAllData,
     clearCraftHistory,

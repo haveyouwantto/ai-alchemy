@@ -30,8 +30,22 @@ export interface Element {
   useCount: number
   /** 是否来自其它世界（重名标记） */
   isForeign?: boolean
+  /** 秘宝标记：桌面上的秘宝卡片（消耗品，用一次少一个） */
+  relicId?: string
   /** 实例唯一标识（同一元素的多个副本区分用，UI 层 DOM key） */
   instanceUid?: string
+}
+
+/** 秘宝：消耗品类特殊物品（与元素同画风，但用一次少一个） */
+export interface Relic {
+  /** 秘宝 ID（如 blackening） */
+  id: string
+  /** 秘宝名称 */
+  name: string
+  /** 秘宝描述 */
+  description: string
+  /** 秘宝图标（元素徽章画风 SVG） */
+  svg: string
 }
 
 /** 合成配方 */

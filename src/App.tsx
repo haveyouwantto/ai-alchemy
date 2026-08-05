@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AIConfig, Element } from './types'
+import { RELIC_TEMPLATES } from './constants'
 import { useWorkspace } from './hooks/useWorkspace'
 import { Workspace } from './components/Workspace'
 import { ElementCodex } from './components/ElementCodex'
+import { RelicCodex } from './components/RelicCodex'
 import { HistoryPanel } from './components/HistoryPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { CraftingOverlay } from './components/CraftingOverlay'
@@ -20,8 +22,10 @@ export default function App() {
     craftHistory,
     positions,
     setPositions,
+    relics,
     isCrafting,
     craft,
+    decomposeElement,
     exportWorkspace,
     importWorkspace,
     getExportFilename,
@@ -29,6 +33,8 @@ export default function App() {
     removeElementInstance,
     addElementFromLibrary,
     addElementInstances,
+    deployRelic,
+    refundRelic,
     resetWorkspace,
     clearAllData,
     clearCraftHistory,
@@ -38,6 +44,7 @@ export default function App() {
   // ---- UI 状态 ----
   const [showCodex, setShowCodex] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showRelics, setShowRelics] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   /** 整理桌面请求版本号（每次 +1 触发工作区平铺） */
   const [tidyVersion, setTidyVersion] = useState(0)
@@ -143,6 +150,10 @@ export default function App() {
           )
         }
       }
+      // 秘宝奖励：合成出足够多的新元素后获得黑化
+      if (outcome.type === 'ai' && outcome.relicReward && outcome.relicReward > 0) {
+        pushToast(`🏺 秘宝奖励 +${outcome.relicReward}：合成出新的元素后，黑化秘宝降临`, undefined, 'success')
+      }
       // 合成完成，清空合成元素展示
       setTimeout(() => setCraftInputs([]), 500)
     },
@@ -160,13 +171,14 @@ export default function App() {
       }
       const el = elements[index]
       if (el) {
+        if (el.relicId) refundRelic(el.instanceUid ?? '')
         removeElementInstance(index)
         setSelectedIndex(null)
         setDeleteConfirm(null)
-        pushToast(`已删除：${el.name}`, undefined, 'info')
+        pushToast(el.relicId ? `已移除：${el.name}（秘宝已返还仓库）` : `已删除：${el.name}`, undefined, 'info')
       }
     },
-    [deleteConfirm, elements, removeElementInstance, pushToast],
+    [deleteConfirm, elements, removeElementInstance, refundRelic, pushToast],
   )
 
   // ---- 拖入垃圾桶删除实例（无需二次确认） ----
@@ -174,11 +186,12 @@ export default function App() {
     (index: number) => {
       const el = elements[index]
       if (!el) return
+      if (el.relicId) refundRelic(el.instanceUid ?? '')
       removeElementInstance(index)
       setSelectedIndex(null)
-      pushToast(`已丢弃：${el.name}`, undefined, 'info')
+      pushToast(el.relicId ? `已丢弃：${el.name}（秘宝已返还仓库）` : `已丢弃：${el.name}`, undefined, 'info')
     },
-    [elements, removeElementInstance, pushToast],
+    [elements, removeElementInstance, refundRelic, pushToast],
   )
 
   // ---- 从图鉴添加到桌面 ----
@@ -193,6 +206,10 @@ export default function App() {
   // ---- 双击复制 ----
   const handleDuplicate = useCallback(
     (element: Element) => {
+      if (element.relicId) {
+        pushToast('秘宝为消耗品，无法复制', undefined, 'info')
+        return
+      }
       duplicateElement(element)
       pushToast(`已复制：${element.name}`, undefined, 'info')
     },
@@ -209,10 +226,14 @@ export default function App() {
       return
     }
     setConfirmClear(false)
+    // 清空桌面：桌面上的秘宝全部返还仓库
+    for (const el of elements) {
+      if (el.relicId) refundRelic(el.instanceUid ?? '')
+    }
     resetWorkspace()
     setSelectedIndex(null)
     pushToast('桌面已重置', undefined, 'success')
-  }, [confirmClear, resetWorkspace, pushToast])
+  }, [confirmClear, elements, refundRelic, resetWorkspace, pushToast])
 
   // ---- 整理桌面：平铺所有卡片 ----
   const handleTidyWorkspace = useCallback(() => {
@@ -220,6 +241,70 @@ export default function App() {
     setSelectedIndex(null)
     pushToast('桌面已整理，卡片已平铺', undefined, 'info')
   }, [pushToast])
+
+  // ---- 秘宝：部署到桌面（库存 -1） ----
+  const handleDeployRelic = useCallback(
+    (relicId: string) => {
+      const relic = RELIC_TEMPLATES.find((r) => r.relicId === relicId)
+      const inst = deployRelic(relicId)
+      if (inst && relic) {
+        pushToast(`已将「${relic.name}」放置到桌面，库存 -1`, [{ name: relic.name, svg: relic.svg }], 'success')
+      } else {
+        pushToast('秘宝库存不足', undefined, 'error')
+      }
+    },
+    [deployRelic, pushToast],
+  )
+
+  // ---- 秘宝反应（黑化拆解元素） ----
+  const handleDecompose = useCallback(
+    async (relic: Element, element: Element) => {
+      if (isCrafting) return
+      setCraftInputs([
+        { name: relic.name, svg: relic.svg },
+        { name: element.name, svg: element.svg },
+      ])
+      setStreamText('')
+      setCraftMessage(`${relic.name}侵蚀中...`)
+      const flashKeys = new Set<string>()
+      if (relic.instanceUid) flashKeys.add(relic.instanceUid)
+      if (element.instanceUid) flashKeys.add(element.instanceUid)
+      setFlashUids(flashKeys)
+      setTimeout(() => setFlashUids(new Set()), 600)
+
+      const outcome = await decomposeElement(
+        relic,
+        element,
+        aiConfig,
+        setCraftMessage,
+        (text) => setStreamText((prev) => prev + text),
+      )
+      if (outcome.type === 'error') {
+        setCraftInputs([])
+        pushToast(`秘宝失灵：${outcome.message}`, undefined, 'error')
+        return
+      }
+      const outcomeElements = outcome.added.map((e) => ({ name: e.name, svg: e.svg }))
+      pushToast(
+        `🖤 ${relic.name}：${element.name} 分解为 ${outcomeElements.map((e) => e.name).join('、')}`,
+        outcomeElements,
+        'success',
+      )
+      if (outcome.type === 'ai' && outcome.newElements.length > 0) {
+        for (const el of outcome.newElements) {
+          pushToast(
+            `✨ 概念元素「${el.name}」析出`,
+            [{ name: el.name, svg: el.svg }],
+            'success',
+            el.description || undefined,
+            true,
+          )
+        }
+      }
+      setTimeout(() => setCraftInputs([]), 500)
+    },
+    [isCrafting, decomposeElement, aiConfig, pushToast],
+  )
 
   // ---- 导入 / 导出 ----
   const handleExport = useCallback(async () => {
@@ -343,6 +428,13 @@ export default function App() {
               {craftHistory.length}
             </span>
           </ToolButton>
+          <ToolButton onClick={() => setShowRelics(true)} title="秘宝录：消耗品，用一次少一个" active={showRelics}>
+            <span className="text-lg leading-none">🏺</span>
+            <span className="hidden sm:inline">秘宝</span>
+            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
+              {Object.values(relics).reduce((sum, n) => sum + n, 0)}
+            </span>
+          </ToolButton>
           <ToolButton onClick={handleExport} title="导出工作区 (ZIP)">
             <span className="text-lg leading-none">💾</span>
             <span className="hidden md:inline">导出</span>
@@ -392,6 +484,7 @@ export default function App() {
         tidyVersion={tidyVersion}
         onSelect={setSelectedIndex}
         onCraft={handleCraft}
+        onDecompose={handleDecompose}
         onDuplicate={handleDuplicate}
         onOpenLibrary={() => setShowCodex(true)}
         onDeleteToTrash={handleDeleteToTrash}
@@ -422,6 +515,13 @@ export default function App() {
           clearCraftHistory()
           pushToast('炼金记录已清空', undefined, 'info')
         }}
+      />
+      <RelicCodex
+        relics={RELIC_TEMPLATES}
+        counts={relics}
+        open={showRelics}
+        onClose={() => setShowRelics(false)}
+        onDeploy={handleDeployRelic}
       />
       <SettingsModal
         open={showSettings}

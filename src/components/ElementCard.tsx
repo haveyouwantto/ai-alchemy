@@ -74,6 +74,14 @@ function ElementCardInner({
         className,
       ].join(' ')}
     >
+      {element.relicId && (
+        <span
+          className="absolute right-1 top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-[9px] leading-none text-violet-200 ring-1 ring-violet-400/40"
+          title="秘宝 · 消耗品"
+        >
+          ✦
+        </span>
+      )}
       {svg ? (
         <div
           className="svg-shell"
