@@ -51,7 +51,7 @@ function ElementCardInner({
   return (
     <div
       ref={ref}
-      style={style}
+      style={{ ...style, width: 72 }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       {...(attributes ?? {})}
