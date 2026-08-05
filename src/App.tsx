@@ -538,6 +538,8 @@ export default function App() {
         history={craftHistory}
         recipes={recipes}
         elements={[...unlockedElements, ...RELIC_TEMPLATES]}
+        categories={categories}
+        onAdd={handleAddFromCodex}
         open={showHistory}
         onClose={() => setShowHistory(false)}
         onClear={() => {

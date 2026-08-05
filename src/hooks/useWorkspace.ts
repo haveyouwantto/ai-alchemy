@@ -302,6 +302,7 @@ export function useWorkspace() {
         const official = INITIAL_ELEMENTS.find((def) => def.id === e.id)
         return {
           ...e,
+          discoveredAt: e.discoveredAt ?? e.createdAt ?? 0,
           id: e.id && /^[a-z0-9_]+$/.test(e.id) ? e.id : normalizeId(e.name || 'element'),
           description: e.description ?? '',
           categoryId: e.categoryId ?? defaultCategory?.id ?? DEFAULT_CATEGORY_ID,
@@ -509,7 +510,7 @@ export function useWorkspace() {
     const existing = new Set(prev.map((e) => e.id))
     const fresh = items.filter((e) => !existing.has(e.id))
     if (fresh.length === 0) return
-    const next = [...prev, ...fresh]
+    const next = [...prev, ...fresh.map((e) => (e.discoveredAt ? e : { ...e, discoveredAt: Date.now() }))]
     const awardRelic = (interval: number, relicId: string) => {
       const awarded = Math.floor(next.length / interval) - Math.floor(prev.length / interval)
       if (awarded > 0) {
@@ -1271,6 +1272,7 @@ export function useWorkspace() {
             ? data.unlockedElements
                 .filter((e) => e && typeof e.id === 'string')
                 .map((e) => ({
+                  discoveredAt: e.discoveredAt ?? e.createdAt ?? 0,
                   id: normalizeId(e.id) || normalizeId(e.name),
                   name: e.name,
                   description: e.description ?? '',

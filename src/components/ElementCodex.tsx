@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Element, ElementCategory, Recipe } from '../types'
 import { sanitizeSVG } from '../utils'
 
@@ -24,27 +24,78 @@ function CodexIcon({ svg, size = 44 }: { svg: string; size?: number }) {
   )
 }
 
-/** 配方小条目：A + B = 输出 */
-function RecipeMini({ recipe, elements }: { recipe: Recipe; elements: Element[] }) {
+/** 配方小条目：A + B = 输出（可点击跳转到对应元素详情） */
+function RecipeMini({
+  recipe,
+  elements,
+  onSelect,
+}: {
+  recipe: Recipe
+  elements: Element[]
+  onSelect: (el: Element) => void
+}) {
   const elA = elements.find((e) => e.id === recipe.inputA)
   const elB = elements.find((e) => e.id === recipe.inputB)
-  const outs = recipe.outputs.map((oid) => elements.find((e) => e.id === oid))
+  const outs = recipe.outputs
+    .map((oid) => elements.find((e) => e.id === oid))
+    .filter((e): e is Element => !!e)
+  const firstOut = outs[0]
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded border border-amber-700/40 bg-amber-100/40 px-1.5 py-1">
-      <CodexIcon svg={elA?.svg ?? ''} size={22} />
-      <span className="text-[11px] font-semibold text-amber-900">{elA?.name ?? '?'}</span>
+    <div
+      onClick={() => firstOut && onSelect(firstOut)}
+      title={firstOut ? `查看「${firstOut.name}」` : undefined}
+      className="flex cursor-pointer flex-wrap items-center gap-1 rounded border border-amber-700/40 bg-amber-100/40 px-1.5 py-1 transition-colors hover:border-amber-500 hover:bg-amber-200/60"
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (elA) onSelect(elA)
+        }}
+        title={elA ? `查看「${elA.name}」` : undefined}
+        className="flex items-center gap-0.5 rounded px-0.5 hover:bg-amber-300/50"
+      >
+        <CodexIcon svg={elA?.svg ?? ''} size={22} />
+        <span className="text-[11px] font-semibold text-amber-900">{elA?.name ?? '?'}</span>
+      </button>
       <span className="text-[11px] text-amber-700">+</span>
-      <CodexIcon svg={elB?.svg ?? ''} size={22} />
-      <span className="text-[11px] font-semibold text-amber-900">{elB?.name ?? '?'}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (elB) onSelect(elB)
+        }}
+        title={elB ? `查看「${elB.name}」` : undefined}
+        className="flex items-center gap-0.5 rounded px-0.5 hover:bg-amber-300/50"
+      >
+        <CodexIcon svg={elB?.svg ?? ''} size={22} />
+        <span className="text-[11px] font-semibold text-amber-900">{elB?.name ?? '?'}</span>
+      </button>
       <span className="px-0.5 text-[11px] text-amber-700">=</span>
       {outs.map((o) => (
-        <span key={o?.id ?? Math.random()} className="flex items-center gap-0.5">
-          <CodexIcon svg={o?.svg ?? ''} size={22} />
-          <span className="text-[11px] font-bold text-emerald-800">{o?.name ?? '?'}</span>
-        </span>
+        <button
+          key={o.id}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect(o)
+          }}
+          title={`查看「${o.name}」`}
+          className="flex items-center gap-0.5 rounded px-0.5 hover:bg-emerald-200/60"
+        >
+          <CodexIcon svg={o.svg} size={22} />
+          <span className="text-[11px] font-bold text-emerald-800">{o.name}</span>
+        </button>
       ))}
     </div>
   )
+}
+
+/** 时间戳 → YYYY-MM-DD */
+function formatDiscovered(ts: number): string {
+  const d = new Date(ts)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /** 元素完整详情 modal（书页风格）——也用于秘宝详情 */
@@ -55,6 +106,7 @@ export function ElementDetailModal({
   elements,
   onAdd,
   onClose,
+  categories,
 }: {
   element: Element
   category: ElementCategory | undefined
@@ -62,11 +114,20 @@ export function ElementDetailModal({
   elements: Element[]
   onAdd: (el: Element) => void
   onClose: () => void
+  /** 类别表（可选）：提供后，跳转到其它元素时也能显示其类别 */
+  categories?: ElementCategory[]
 }) {
-  const recipesAsOutput = recipes.filter((r) => r.outputs.includes(element.id))
+  const [viewElement, setViewElement] = useState(element)
+  useEffect(() => setViewElement(element), [element])
+
+  const recipesAsOutput = recipes.filter((r) => r.outputs.includes(viewElement.id))
   const recipesAsInput = recipes.filter(
-    (r) => !recipesAsOutput.includes(r) && (r.inputA === element.id || r.inputB === element.id),
+    (r) => !recipesAsOutput.includes(r) && (r.inputA === viewElement.id || r.inputB === viewElement.id),
   )
+  const viewCategory =
+    categories?.find((c) => c.id === viewElement.categoryId) ??
+    (viewElement.id === element.id ? category : undefined)
+  const navigateTo = (el: Element) => setViewElement(el)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
@@ -88,14 +149,19 @@ export function ElementDetailModal({
         <div className="alchemy-scroll max-h-[70vh] overflow-y-auto p-5">
           {/* 头部：大图标 + 名称 + ID + 类别 */}
           <div className="flex items-center gap-4 pb-3">
-            <CodexIcon svg={element.svg} size={72} />
+            <CodexIcon svg={viewElement.svg} size={72} />
             <div className="min-w-0">
-              <h2 className="text-2xl font-bold text-amber-950">{element.name}</h2>
-              <p className="font-mono text-xs text-amber-700">{element.id}</p>
-              {category && (
+              <h2 className="text-2xl font-bold text-amber-950">{viewElement.name}</h2>
+              <p className="font-mono text-xs text-amber-700">{viewElement.id}</p>
+              {viewElement.discoveredAt !== undefined && viewElement.discoveredAt > 0 && (
+                <p className="mt-0.5 text-[11px] text-amber-700/80">
+                  发现于 {formatDiscovered(viewElement.discoveredAt)}
+                </p>
+              )}
+              {viewCategory && (
                 <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-700/50 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-                  <CodexIcon svg={category.icon} size={14} />
-                  {category.name}
+                  <CodexIcon svg={viewCategory.icon} size={14} />
+                  {viewCategory.name}
                 </span>
               )}
             </div>
@@ -103,7 +169,7 @@ export function ElementDetailModal({
 
           {/* 描述 */}
           <p className="border-y border-amber-800/30 py-3 text-sm leading-relaxed text-amber-900/90">
-            {element.description || '暂无描述，此元素由炼金术师偶然所得…'}
+            {viewElement.description || '暂无描述，此元素由炼金术师偶然所得…'}
           </p>
 
           {/* 双栏配方 */}
@@ -118,7 +184,9 @@ export function ElementDetailModal({
                     暂无
                   </p>
                 ) : (
-                  recipesAsOutput.map((r) => <RecipeMini key={r.id} recipe={r} elements={elements} />)
+                  recipesAsOutput.map((r) => (
+                    <RecipeMini key={r.id} recipe={r} elements={elements} onSelect={navigateTo} />
+                  ))
                 )}
               </div>
             </div>
@@ -132,7 +200,9 @@ export function ElementDetailModal({
                     暂无
                   </p>
                 ) : (
-                  recipesAsInput.map((r) => <RecipeMini key={r.id} recipe={r} elements={elements} />)
+                  recipesAsInput.map((r) => (
+                    <RecipeMini key={r.id} recipe={r} elements={elements} onSelect={navigateTo} />
+                  ))
                 )}
               </div>
             </div>
@@ -143,7 +213,7 @@ export function ElementDetailModal({
         <div className="flex gap-2 border-t border-amber-800/30 bg-[#f5e6c8] px-4 py-3">
           <button
             onClick={() => {
-              onAdd(element)
+              onAdd(viewElement)
               onClose()
             }}
             className="flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-2 font-bold text-amber-950 transition-all hover:brightness-110 active:scale-95"
@@ -165,6 +235,7 @@ export function ElementDetailModal({
 export function ElementCodex({ elements, recipes, categories, open, onClose, onAdd }: ElementCodexProps) {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [sortMode, setSortMode] = useState<'time' | 'name'>('time')
   const [detailElement, setDetailElement] = useState<Element | null>(null)
 
   // 去重后的元素（图鉴以元素类型为单位，非实例）
@@ -184,8 +255,12 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
         if (!q) return true
         return e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.description.toLowerCase().includes(q)
       })
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-  }, [uniqueElements, search, categoryFilter])
+      .sort((a, b) =>
+        sortMode === 'time'
+          ? (b.discoveredAt ?? b.createdAt ?? 0) - (a.discoveredAt ?? a.createdAt ?? 0)
+          : a.name.localeCompare(b.name, 'zh-CN'),
+      )
+  }, [uniqueElements, search, categoryFilter, sortMode])
 
   if (!open) return null
 
@@ -219,6 +294,26 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
                 </option>
               ))}
             </select>
+            <div className="flex overflow-hidden rounded-lg border border-amber-700/40 bg-[#fdf6e3]">
+              <button
+                onClick={() => setSortMode('time')}
+                className={`px-2 py-1.5 text-xs font-bold transition-colors ${
+                  sortMode === 'time' ? 'bg-amber-400 text-amber-950' : 'text-amber-800 hover:bg-amber-200/60'
+                }`}
+                title="按发现时间排序（最近优先）"
+              >
+                最近发现
+              </button>
+              <button
+                onClick={() => setSortMode('name')}
+                className={`px-2 py-1.5 text-xs font-bold transition-colors ${
+                  sortMode === 'name' ? 'bg-amber-400 text-amber-950' : 'text-amber-800 hover:bg-amber-200/60'
+                }`}
+                title="按名称排序"
+              >
+                按名称
+              </button>
+            </div>
             <button
               onClick={onClose}
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
@@ -328,6 +423,7 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
           category={detailCategory}
           recipes={recipes}
           elements={uniqueElements}
+          categories={categories}
           onAdd={onAdd}
           onClose={() => setDetailElement(null)}
         />

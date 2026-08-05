@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CraftHistoryEntry, Element, Recipe } from '../types'
+import type { CraftHistoryEntry, Element, ElementCategory, Recipe } from '../types'
 import { sanitizeSVG } from '../utils'
+import { ElementDetailModal } from './ElementCodex'
 
 interface HistoryPanelProps {
   history: CraftHistoryEntry[]
@@ -8,6 +9,10 @@ interface HistoryPanelProps {
   recipes: Recipe[]
   /** 元素库（图鉴）：用于渲染元素名称/SVG */
   elements: Element[]
+  /** 类别表（详情弹窗展示类别用） */
+  categories: ElementCategory[]
+  /** 详情弹窗「添加到桌面」 */
+  onAdd: (el: Element) => void
   open: boolean
   onClose: () => void
   onClear: () => void
@@ -46,9 +51,10 @@ function formatDate(ts: number): string {
 /** 每页显示的记录条数 */
 const PAGE_SIZE = 20
 
-export function HistoryPanel({ history, recipes, elements, open, onClose, onClear }: HistoryPanelProps) {
+export function HistoryPanel({ history, recipes, elements, categories, onAdd, open, onClose, onClear }: HistoryPanelProps) {
   const [confirmClear, setConfirmClear] = useState(false)
   const [page, setPage] = useState(0)
+  const [detailElement, setDetailElement] = useState<Element | null>(null)
 
   // 打开时回到第一页
   useEffect(() => {
@@ -197,21 +203,37 @@ export function HistoryPanel({ history, recipes, elements, open, onClose, onClea
                             </div>
                           ) : (
                             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                              <span className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => elA && setDetailElement(elA)}
+                                title={elA ? `查看「${elA.name}」` : undefined}
+                                className="flex items-center gap-1 rounded px-0.5 transition-colors hover:bg-amber-200/70"
+                              >
                                 <HistoryIcon svg={elA?.svg ?? ''} size={24} />
                                 <span className="text-xs font-semibold text-amber-950">{elA?.name ?? '?'}</span>
-                              </span>
+                              </button>
                               <span className="text-xs font-bold text-amber-700">+</span>
-                              <span className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => elB && setDetailElement(elB)}
+                                title={elB ? `查看「${elB.name}」` : undefined}
+                                className="flex items-center gap-1 rounded px-0.5 transition-colors hover:bg-amber-200/70"
+                              >
                                 <HistoryIcon svg={elB?.svg ?? ''} size={24} />
                                 <span className="text-xs font-semibold text-amber-950">{elB?.name ?? '?'}</span>
-                              </span>
+                              </button>
                               <span className="text-xs font-bold text-amber-700">=</span>
                               {outs.map((o) => (
-                                <span key={`${h.id}-${o.id}`} className="flex items-center gap-1">
+                                <button
+                                  key={`${h.id}-${o.id}`}
+                                  type="button"
+                                  onClick={() => setDetailElement(o)}
+                                  title={`查看「${o.name}」`}
+                                  className="flex items-center gap-1 rounded px-0.5 transition-colors hover:bg-emerald-100"
+                                >
                                   <HistoryIcon svg={o.svg} size={24} />
                                   <span className="text-xs font-bold text-emerald-800">{o.name}</span>
-                                </span>
+                                </button>
                               ))}
                             </div>
                           )}
@@ -256,6 +278,19 @@ export function HistoryPanel({ history, recipes, elements, open, onClose, onClea
           </div>
         )}
       </div>
+
+      {/* 元素详情：点击历史记录中的元素打开 */}
+      {detailElement && (
+        <ElementDetailModal
+          element={detailElement}
+          category={categories.find((c) => c.id === detailElement.categoryId)}
+          recipes={recipes}
+          elements={elements}
+          categories={categories}
+          onAdd={onAdd}
+          onClose={() => setDetailElement(null)}
+        />
+      )}
     </div>
   )
 }

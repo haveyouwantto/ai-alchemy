@@ -32,6 +32,8 @@ export interface Element {
   isForeign?: boolean
   /** 秘宝标记：桌面上的秘宝卡片（消耗品，用一次少一个） */
   relicId?: string
+  /** 发现时间戳（图鉴解锁时间，用于时间排序与展示） */
+  discoveredAt?: number
   /** 实例唯一标识（同一元素的多个副本区分用，UI 层 DOM key） */
   instanceUid?: string
 }
