@@ -68,6 +68,7 @@ export default function App() {
     setPositions,
     relics,
     achievements,
+    newElementCount,
     isCrafting,
     craft,
     transmutePoint,
@@ -94,6 +95,45 @@ export default function App() {
   const [showAchievements, setShowAchievements] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  /** 减法模式：A−B 有序合成（合成 150 个元素后解锁） */
+  const [subtractMode, setSubtractMode] = useState(false)
+  /** 减法模式解锁时的箭头教程 */
+  const [subtractHint, setSubtractHint] = useState(false)
+  const SUBTRACT_HINT_KEY = 'alchemy-subtract-hint-seen'
+  const subtractUnlocked = (newElementCount ?? 0) >= 150
+
+  // 解锁减法模式时展示一次箭头说明
+  useEffect(() => {
+    if (!subtractUnlocked) return
+    let seen = false
+    try {
+      seen = localStorage.getItem(SUBTRACT_HINT_KEY) === '1'
+    } catch {
+      // ignore
+    }
+    if (seen) return
+    setSubtractHint(true)
+    const t = setTimeout(() => {
+      setSubtractHint(false)
+      try {
+        localStorage.setItem(SUBTRACT_HINT_KEY, '1')
+      } catch {
+        // ignore
+      }
+    }, 6000)
+    return () => clearTimeout(t)
+  }, [subtractUnlocked])
+
+  const toggleSubtract = useCallback(() => {
+    if (!subtractUnlocked) return
+    setSubtractMode((v) => !v)
+    setSubtractHint(false)
+    try {
+      localStorage.setItem(SUBTRACT_HINT_KEY, '1')
+    } catch {
+      // ignore
+    }
+  }, [subtractUnlocked])
   /** 赤化点化：待提交说服文本（relic=赤化，element=被点化元素） */
   const [pendingTransmute, setPendingTransmute] = useState<{ relic: Element; element: Element } | null>(null)
   /** 秘宝使用二次确认（含重复使用警告） */
@@ -172,6 +212,9 @@ export default function App() {
         (elementA.relicId ?? elementB.relicId)
           ? RELIC_PROMPTS[(elementA.relicId ?? elementB.relicId)!]
           : undefined,
+        undefined,
+        // 减法模式仅对普通合成生效（秘宝反应不参与）
+        !(elementA.relicId ?? elementB.relicId) && subtractMode,
       )
       if (outcome.type === 'error') {
         setCraftInputs([])
@@ -185,7 +228,8 @@ export default function App() {
       }
       // 明显的合成公式 Toast：输入 + 输出（新元素和已知元素都展示）
       const outcomeElements = [...outcome.added.map((e) => ({ name: e.name, svg: e.svg }))]
-      const formulaTitle = `${elementA.name} + ${elementB.name} = ${
+      const op = !(elementA.relicId ?? elementB.relicId) && subtractMode ? ' − ' : ' + '
+      const formulaTitle = `${elementA.name}${op}${elementB.name} = ${
         outcomeElements.length > 0
           ? outcomeElements.map((e) => e.name).join('、')
           : outcome.known.join('、') || '？'
@@ -206,7 +250,7 @@ export default function App() {
       // 合成完成，清空合成元素展示
       setTimeout(() => setCraftInputs([]), 500)
     },
-    [craft, isCrafting, aiConfig, pushToast],
+    [craft, isCrafting, aiConfig, pushToast, subtractMode],
   )
 
   // ---- 合成入口：秘宝参与时先二次确认 ----
@@ -673,6 +717,18 @@ export default function App() {
         onDuplicate={handleDuplicate}
         onOpenLibrary={() => setShowCodex(true)}
         onDeleteToTrash={handleDeleteToTrash}
+        subtractMode={subtractMode}
+        subtractUnlocked={subtractUnlocked}
+        onToggleSubtract={toggleSubtract}
+        showSubtractHint={subtractHint}
+        onSubtractHintSeen={() => {
+          setSubtractHint(false)
+          try {
+            localStorage.setItem(SUBTRACT_HINT_KEY, '1')
+          } catch {
+            // ignore
+          }
+        }}
       />
 
       {/* Modal 层 */}

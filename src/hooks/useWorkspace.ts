@@ -26,6 +26,7 @@ import {
   RELIC_PROMPTS,
   RELIC_TEMPLATES,
   RELIC_VERBS,
+  SUBTRACT_SYSTEM_PROMPT,
   TRANSMUTE_SYSTEM_PROMPT,
 } from '../constants'
 import { parseToolArguments, streamChatCompletion } from '../aiClient'
@@ -415,14 +416,15 @@ export function useWorkspace(options?: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** 查找本地配方（双向匹配） */
+  /** 查找本地配方（默认双向匹配；减法模式按顺序匹配 A−B） */
   const findLocalRecipe = useCallback(
-    (aId: string, bId: string): Recipe | null => {
+    (aId: string, bId: string, ordered = false): Recipe | null => {
       return (
         recipes.find(
           (r) =>
-            (r.inputA === aId && r.inputB === bId) ||
-            (r.inputA === bId && r.inputB === aId),
+            ordered
+              ? r.inputA === aId && r.inputB === bId
+              : (r.inputA === aId && r.inputB === bId) || (r.inputA === bId && r.inputB === aId),
         ) ?? null
       )
     },
@@ -693,7 +695,7 @@ export function useWorkspace(options?: {
 
   /** 构建 LLM 上下文消息 */
   const buildMessages = useCallback(
-    (inputA: Element, inputB: Element): ChatMessage[] => {
+    (inputA: Element, inputB: Element, subtract = false): ChatMessage[] => {
       const relatedRecipes = stateRef.current.recipes.filter(
         (r) =>
           (r.inputA === inputA.id && r.inputB === inputB.id) ||
@@ -713,10 +715,14 @@ export function useWorkspace(options?: {
       const inputDescB = inputB.description ? `："${inputB.description}"` : ''
 
       // system：固定不变规则（无动态注入）
-      const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+      const systemPrompt = subtract ? SUBTRACT_SYSTEM_PROMPT : SYSTEM_PROMPT_TEMPLATE
 
       // user：本次合成全部动态数据（类别清单 / 元素图鉴 / 合成对象 / 相关配方）
-      const userPrompt = `${buildWorldContext()}\n\n【本次合成对象】\n${inputA.name}（ID: ${inputA.id}，类别：${catNameOf(inputA.categoryId)}）${inputDescA}\n${inputB.name}（ID: ${inputB.id}，类别：${catNameOf(inputB.categoryId)}）${inputDescB}\n\n【相关已有配方】\n${recipeDesc}\n\n请现在合成 ${inputA.name} 和 ${inputB.name}，并调用相应工具。`
+      const userPrompt = `${buildWorldContext()}\n\n【本次合成对象】\n${inputA.name}（ID: ${inputA.id}，类别：${catNameOf(inputA.categoryId)}）${inputDescA}\n${inputB.name}（ID: ${inputB.id}，类别：${catNameOf(inputB.categoryId)}）${inputDescB}\n\n【相关已有配方】\n${recipeDesc}\n\n${
+        subtract
+          ? `请现在执行减法合成 ${inputA.name} − ${inputB.name}（先 ${inputA.name} 后 ${inputB.name}，顺序有要求），并调用相应工具。`
+          : `请现在合成 ${inputA.name} 和 ${inputB.name}，并调用相应工具。`
+      }`
 
       return [
         { role: 'system', content: systemPrompt },
@@ -744,6 +750,8 @@ export function useWorkspace(options?: {
       decomposePrompt?: string,
       /** 传入玩家说服文本即为「点化模式」（赤化：玩家指定目标，AI 审批） */
       transmuteRequest?: string,
+      /** 减法模式：A−B 有序合成 */
+      subtract?: boolean,
     ): Promise<CraftOutcome> => {
       if (isCrafting) return { type: 'error', message: '正在合成中，请稍候' }
       const specialMode = !!decomposePrompt
@@ -752,7 +760,7 @@ export function useWorkspace(options?: {
       setIsCrafting(true)
       try {
         // 步骤 1：本地查重
-        const local = findLocalRecipe(inputA.id, inputB.id)
+        const local = findLocalRecipe(inputA.id, inputB.id, subtract)
         if (local) {
           return executeLocalRecipe(local, inputA, inputB)
         }
@@ -785,7 +793,7 @@ export function useWorkspace(options?: {
                   content: `${buildWorldContext()}\n\n【秘宝】${relicInput!.name}（ID: ${relicInput!.id}）\n【待点化元素】${inputA.relicId ? inputB.name : inputA.name}（ID: ${inputA.relicId ? inputB.id : inputA.id}）\n\n【玩家的点化请求】\n${transmuteRequest}`,
                 },
               ]
-            : buildMessages(inputA, inputB)
+            : buildMessages(inputA, inputB, subtract)
         onMessage(specialMode ? `${relicInput!.name}${relicVerb}中...` : '正在解析元素...')
         onMessage(specialMode ? `${relicVerb}进行中...` : '正在搅拌中...')
 

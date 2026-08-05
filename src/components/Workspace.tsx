@@ -31,6 +31,14 @@ interface WorkspaceProps {
   onOpenLibrary: () => void
   /** 拖入垃圾桶时删除对应实例 */
   onDeleteToTrash: (index: number) => void
+  /** 减法模式：A−B 有序合成 */
+  subtractMode: boolean
+  /** 减法模式是否已解锁（合成 150 个元素） */
+  subtractUnlocked: boolean
+  onToggleSubtract: () => void
+  /** 解锁后的箭头教程 */
+  showSubtractHint: boolean
+  onSubtractHintSeen: () => void
 }
 
 /** 获取元素的稳定 key */
@@ -140,6 +148,11 @@ export function Workspace({
   onDuplicate,
   onOpenLibrary,
   onDeleteToTrash,
+  subtractMode,
+  subtractUnlocked,
+  onToggleSubtract,
+  showSubtractHint,
+  onSubtractHintSeen,
 }: WorkspaceProps) {
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const positionCounter = useRef(0)
@@ -631,6 +644,39 @@ export function Workspace({
           title="拖拽元素到垃圾桶删除"
         >
           <span className={isOverTrash ? 'animate-bounce' : ''}>🗑️</span>
+        </div>
+
+        {/* 加减法模式切换（左下角） */}
+        <div className="absolute bottom-4 left-4 z-20 flex flex-col items-start gap-1.5">
+          {showSubtractHint && (
+            <button
+              type="button"
+              onClick={onSubtractHintSeen}
+              className="flex max-w-[220px] items-center gap-1 rounded-lg border border-amber-400/60 bg-[#241608]/95 px-2 py-1 text-left text-[11px] font-semibold leading-snug text-amber-200 shadow-[0_0_16px_rgba(251,191,36,0.3)]"
+            >
+              <span className="animate-arrow-bounce text-lg">↘</span>
+              <span>减法模式已解锁，点击下方按钮切换 A−B 合成</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onToggleSubtract}
+            disabled={!subtractUnlocked}
+            title={
+              subtractUnlocked
+                ? subtractMode
+                  ? '减法模式：A−B（顺序有要求）'
+                  : '加法模式：A+B（顺序无关）'
+                : '合成 150 个元素后解锁减法模式'
+            }
+            className={`flex h-12 w-12 items-center justify-center rounded-2xl border-2 text-2xl font-bold transition-all active:scale-95 ${
+              subtractMode
+                ? 'border-red-400 bg-red-900/70 text-red-100 shadow-[0_0_14px_rgba(248,113,113,0.35)]'
+                : 'border-amber-700/50 bg-[#3a2512]/90 text-amber-100 hover:border-amber-500'
+            } ${!subtractUnlocked ? 'cursor-not-allowed opacity-50' : ''}`}
+          >
+            {subtractUnlocked ? (subtractMode ? '−' : '+') : '🔒'}
+          </button>
         </div>
 
         {/* 空态 */}
