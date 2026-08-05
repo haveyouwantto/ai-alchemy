@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { AIConfig, Element } from './types'
-import { RELIC_PROMPTS, RELIC_TEMPLATES } from './constants'
+import { ACHIEVEMENTS, RELIC_PROMPTS, RELIC_TEMPLATES } from './constants'
 import { useWorkspace } from './hooks/useWorkspace'
+import { AchievementsModal } from './components/AchievementsModal'
 import { Workspace } from './components/Workspace'
 import { ElementCodex } from './components/ElementCodex'
 import { RelicCodex } from './components/RelicCodex'
@@ -17,7 +18,37 @@ import { ToastContainer } from './components/Toast'
 import type { ToastData } from './components/Toast'
 
 export default function App() {
-  const ws = useWorkspace()
+  // ---- Toast（需在 useWorkspace 之前定义，供成就达成回调使用） ----
+  const toastId = useRef(0)
+  const [toasts, setToasts] = useState<ToastData[]>([])
+  const pushToast = useCallback(
+    (
+      title: string,
+      elementsData?: ToastData['elements'],
+      kind: ToastData['kind'] = 'success',
+      content?: string,
+      hideObtainText?: boolean,
+    ) => {
+      toastId.current += 1
+      const id = toastId.current
+      setToasts((prev) => [...prev.slice(-3), { id, title, elements: elementsData, kind, content, hideObtainText }])
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id))
+      }, 5300)
+    },
+    [],
+  )
+
+  const ws = useWorkspace({
+    onAchievementComplete: (list) => {
+      for (const a of list) {
+        const reward = Object.entries(a.reward)
+          .map(([rid, n]) => `${RELIC_TEMPLATES.find((t) => t.relicId === rid)?.name ?? rid}×${n}`)
+          .join('、')
+        pushToast(`🏆 成就达成：${a.name}`, undefined, 'success', reward ? `奖励秘宝：${reward}` : undefined)
+      }
+    },
+  })
   const {
     elements,
     recipes,
@@ -27,6 +58,7 @@ export default function App() {
     positions,
     setPositions,
     relics,
+    achievements,
     isCrafting,
     craft,
     transmutePoint,
@@ -50,6 +82,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [showRelics, setShowRelics] = useState(false)
   const [showMap, setShowMap] = useState(false)
+  const [showAchievements, setShowAchievements] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   /** 赤化点化：待提交说服文本（relic=赤化，element=被点化元素） */
   const [pendingTransmute, setPendingTransmute] = useState<{ relic: Element; element: Element } | null>(null)
@@ -61,8 +94,6 @@ export default function App() {
   const [craftInputs, setCraftInputs] = useState<Array<{ name: string; svg: string } | null>>([])
   const [streamText, setStreamText] = useState('')
   const [flashUids, setFlashUids] = useState<Set<string>>(new Set())
-  const [toasts, setToasts] = useState<ToastData[]>([])
-  const toastId = useRef(0)
 
   // AI 配置（持久化到 localStorage）
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
@@ -86,25 +117,6 @@ export default function App() {
       // ignore
     }
   }, [])
-
-  // ---- Toast ----
-  const pushToast = useCallback(
-    (
-      title: string,
-      elementsData?: ToastData['elements'],
-      kind: ToastData['kind'] = 'success',
-      content?: string,
-      hideObtainText?: boolean,
-    ) => {
-      toastId.current += 1
-      const id = toastId.current
-      setToasts((prev) => [...prev.slice(-3), { id, title, elements: elementsData, kind, content, hideObtainText }])
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id))
-      }, 5300)
-    },
-    [],
-  )
 
   // ---- 合成 ----
   const handleCraft = useCallback(
@@ -473,6 +485,13 @@ export default function App() {
             <span className="text-lg leading-none">🗺️</span>
             <span className="hidden sm:inline">地图</span>
           </ToolButton>
+          <ToolButton onClick={() => setShowAchievements(true)} title="成就" active={showAchievements}>
+            <span className="text-lg leading-none">🏆</span>
+            <span className="hidden sm:inline">成就</span>
+            <span className="rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950 shadow-[0_0_8px_rgba(251,191,36,0.5)]">
+              {Object.keys(achievements).length}
+            </span>
+          </ToolButton>
           <ToolButton onClick={handleExport} title="导出工作区 (ZIP)">
             <span className="text-lg leading-none">💾</span>
             <span className="hidden md:inline">导出</span>
@@ -563,6 +582,15 @@ export default function App() {
         open={showRelics}
         onClose={() => setShowRelics(false)}
         onDeploy={handleDeployRelic}
+      />
+      <AchievementsModal
+        achievements={ACHIEVEMENTS}
+        completed={achievements}
+        unlockedCount={unlockedElements.length}
+        categoryCount={categories.length}
+        unlockedIds={unlockedElements.map((e) => e.id)}
+        open={showAchievements}
+        onClose={() => setShowAchievements(false)}
       />
       {showMap && (
         <Suspense fallback={null}>

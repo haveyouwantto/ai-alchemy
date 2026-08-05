@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import type {
+  Achievement,
   AIConfig,
   CardPosition,
   ChatMessage,
@@ -15,6 +16,7 @@ import type {
 } from '../types'
 import { DEFAULT_CATEGORY_ID, FUNCTIONS, INITIAL_ELEMENTS, INITIAL_WORKSPACE, SYSTEM_PROMPT_TEMPLATE } from '../constants'
 import {
+  ACHIEVEMENTS,
   DECOMPOSE_SYSTEM_PROMPT,
   INITIAL_RELIC_COUNTS,
   RELIC_ALBEDO_UNLOCK_INTERVAL,
@@ -60,6 +62,7 @@ interface StateRef {
   positions: Record<string, CardPosition>
   relics: Record<string, number>
   newElementCount: number
+  achievements: Record<string, number>
 }
 
 const STORAGE_KEY = 'alchemy-workspace-data'
@@ -92,6 +95,8 @@ interface StoredWorkspace {
   relics?: Record<string, number>
   /** 累计合成出的新元素数量（用于秘宝奖励） */
   newElementCount?: number
+  /** 已完成成就：achievementId → 完成时间戳 */
+  achievements?: Record<string, number>
 }
 
 /**
@@ -111,6 +116,7 @@ function loadStoredWorkspace(): StoredWorkspace {
         positions?: Record<string, CardPosition>
         relics?: Record<string, number>
         newElementCount?: number
+        achievements?: Record<string, number>
       }
       if (Array.isArray(parsed.elements) && Array.isArray(parsed.recipes)) {
         // 仅迁移类别 ID（元素 ID 不迁移：wind 等 ID 让 AI 自由创建「风」）
@@ -237,6 +243,16 @@ function loadStoredWorkspace(): StoredWorkspace {
             typeof parsed.newElementCount === 'number' && Number.isFinite(parsed.newElementCount)
               ? Math.max(0, Math.floor(parsed.newElementCount))
               : unlockedElements.length,
+          achievements: (() => {
+            const done: Record<string, number> = {}
+            if (parsed.achievements && typeof parsed.achievements === 'object') {
+              for (const [key, value] of Object.entries(parsed.achievements)) {
+                const ts = Number(value)
+                if (Number.isFinite(ts) && ts > 0) done[key] = ts
+              }
+            }
+            return done
+          })(),
         }
       }
     }
@@ -250,6 +266,7 @@ function loadStoredWorkspace(): StoredWorkspace {
     positions: {},
     relics: { ...INITIAL_RELIC_COUNTS },
     newElementCount: 0,
+    achievements: {},
   }
 }
 
@@ -262,7 +279,8 @@ function normalizeId(input: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
-export function useWorkspace() {
+export function useWorkspace(options?: { onAchievementComplete?: (list: Achievement[]) => void }) {
+  const { onAchievementComplete } = options ?? {}
   // 初始数据：加载持久化存档并确保每个实例都有 instanceUid，旧元素补描述/类别
   const initial = useMemo(() => {
     const stored = loadStoredWorkspace()
@@ -315,6 +333,7 @@ export function useWorkspace() {
       positions,
       relics: stored.relics ?? { ...INITIAL_RELIC_COUNTS },
       newElementCount: stored.newElementCount ?? 0,
+      achievements: stored.achievements ?? {},
     }
   }, [])
 
@@ -331,6 +350,10 @@ export function useWorkspace() {
   const [relics, setRelics] = useState<Record<string, number>>(initial.relics)
   /** 累计合成出的新元素数量（用于秘宝奖励） */
   const [newElementCount, setNewElementCount] = useState(initial.newElementCount)
+  /** 已完成成就：achievementId → 完成时间戳 */
+  const [achievements, setAchievements] = useState<Record<string, number>>(initial.achievements)
+  /** 已结算过的成就（StrictMode 防重；加载/导入时同步） */
+  const claimedRef = useRef<Set<string>>(new Set(Object.keys(initial.achievements)))
 
   // 正在合成中（防止重复拖拽）
   const [isCrafting, setIsCrafting] = useState(false)
@@ -345,10 +368,11 @@ export function useWorkspace() {
     positions,
     relics,
     newElementCount,
+    achievements,
   })
   useEffect(() => {
-    stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount }
-  }, [elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount])
+    stateRef.current = { elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount, achievements }
+  }, [elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount, achievements])
 
   // 自动持久化到 localStorage（桌面元素只存 id + 位置 + 实例 uid，其余字段运行时由图鉴还原）
   useEffect(() => {
@@ -371,12 +395,19 @@ export function useWorkspace() {
           craftHistory,
           relics,
           newElementCount,
+          achievements,
         }),
       )
     } catch {
       // ignore quota / privacy errors
     }
-  }, [elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount])
+  }, [elements, recipes, categories, unlockedElements, craftHistory, positions, relics, newElementCount, achievements])
+
+  // 打开存档时检查未完成成就
+  useEffect(() => {
+    checkAchievements()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /** 查找本地配方（双向匹配） */
   const findLocalRecipe = useCallback(
@@ -481,6 +512,8 @@ export function useWorkspace() {
     setPositions({})
     setRelics({ ...INITIAL_RELIC_COUNTS })
     setNewElementCount(0)
+    setAchievements({})
+    claimedRef.current = new Set()
   }, [])
 
   /** 向合成历史追加一条记录（无数量上限，前端分页展示） */
@@ -503,6 +536,46 @@ export function useWorkspace() {
     setCraftHistory([])
   }, [])
 
+  /** 检查未完成成就：达标则标记完成、发放秘宝奖励，并通知外层（加载与合成时调用） */
+  const checkAchievements = useCallback(
+    (unlockedOverride?: Element[]) => {
+      const unlocked = unlockedOverride ?? stateRef.current.unlockedElements
+      const categories = stateRef.current.categories
+      const done = stateRef.current.achievements
+      const newly: Achievement[] = []
+      const rewards: Record<string, number> = {}
+      for (const ach of ACHIEVEMENTS) {
+        if (done[ach.id] || claimedRef.current.has(ach.id)) continue
+        const complete =
+          ach.metric === 'elements'
+            ? unlocked.length >= (ach.targetCount ?? 0)
+            : ach.metric === 'categories'
+              ? categories.length >= (ach.targetCount ?? 0)
+              : (ach.targetIds ?? []).every((id) => unlocked.some((e) => e.id === id))
+        if (!complete) continue
+        claimedRef.current.add(ach.id)
+        newly.push(ach)
+        for (const [rid, n] of Object.entries(ach.reward)) {
+          rewards[rid] = (rewards[rid] ?? 0) + n
+        }
+      }
+      if (newly.length === 0) return
+      const now = Date.now()
+      setAchievements((prev) => {
+        const next = { ...prev }
+        for (const a of newly) if (!next[a.id]) next[a.id] = now
+        return next
+      })
+      setRelics((prev) => {
+        const next = { ...prev }
+        for (const [rid, n] of Object.entries(rewards)) next[rid] = (next[rid] ?? 0) + n
+        return next
+      })
+      onAchievementComplete?.(newly)
+    },
+    [onAchievementComplete],
+  )
+
   /** 将一批元素注册为「已解锁」（图鉴数据；已存在则跳过）；按解锁数量奖励白化/黄化/赤化 */
   const unlockElements = useCallback((items: Element[]) => {
     if (items.length === 0) return
@@ -521,7 +594,9 @@ export function useWorkspace() {
     awardRelic(RELIC_CITRINITAS_UNLOCK_INTERVAL, 'citrinitas')
     awardRelic(RELIC_RUBEDO_UNLOCK_INTERVAL, 'rubedo')
     setUnlockedElements(next)
-  }, [])
+    // 合成/反应解锁后顺带检查成就（用最新的解锁列表，避免计数滞后）
+    checkAchievements(next)
+  }, [checkAchievements])
 
   /** 将元素的使用频次 +delta */
   const bumpUseCount = useCallback((id: string, delta = 1) => {
@@ -1069,7 +1144,7 @@ export function useWorkspace() {
   const exportWorkspace = useCallback(async (): Promise<Blob> => {
     const now = new Date()
     const manifest = {
-      formatVersion: 4,
+      formatVersion: 5,
       exportedAt: now.toISOString(),
       title: 'AI 炼金术工坊存档',
       files: {
@@ -1079,6 +1154,7 @@ export function useWorkspace() {
         unlockedElements: 'unlockedElements.json',
         craftHistory: 'craftHistory.json',
         relics: 'relics.json',
+        achievements: 'achievements.json',
       },
     }
     const zip = new JSZip()
@@ -1113,6 +1189,7 @@ export function useWorkspace() {
         2,
       ),
     )
+    zip.file('achievements.json', JSON.stringify(stateRef.current.achievements ?? {}, null, 2))
     return await zip.generateAsync({ type: 'blob' })
   }, [])
 
@@ -1158,9 +1235,35 @@ export function useWorkspace() {
           craftHistory?: CraftHistoryEntry[]
           positions?: Record<string, CardPosition>
           relicsData?: { relics?: Record<string, number>; newElementCount?: number }
+          achievementsData?: Record<string, number>
         } | null = null
 
-        if (manifest.formatVersion === 4) {
+        if (manifest.formatVersion === 5) {
+          // v5 新格式：桌面元素紧凑引用 + 秘宝库存 + 成就
+          const [rawElements, recipes, categories, unlockedElements, craftHistory, relicsData, achievementsData] =
+            await Promise.all([
+              readJson<Array<Element | StoredElementRef>>(nameOf('elements', 'elements.json')),
+              readJson<Recipe[]>(nameOf('recipes', 'recipes.json')),
+              readJson<ElementCategory[]>(nameOf('categories', 'categories.json')),
+              readJson<Element[]>(nameOf('unlockedElements', 'unlockedElements.json')),
+              readJson<CraftHistoryEntry[]>(nameOf('craftHistory', 'craftHistory.json')),
+              readJson<{ relics?: Record<string, number>; newElementCount?: number }>(
+                nameOf('relics', 'relics.json'),
+              ),
+              readJson<Record<string, number>>(nameOf('achievements', 'achievements.json')),
+            ])
+          if (Array.isArray(rawElements) && Array.isArray(recipes)) {
+            data = {
+              elements: rawElements,
+              recipes,
+              categories: categories ?? [],
+              unlockedElements: unlockedElements ?? undefined,
+              craftHistory: craftHistory ?? undefined,
+              relicsData: relicsData ?? undefined,
+              achievementsData: achievementsData ?? undefined,
+            }
+          }
+        } else if (manifest.formatVersion === 4) {
           // v4 新格式：桌面元素紧凑引用 + 秘宝库存
           const [rawElements, recipes, categories, unlockedElements, craftHistory, relicsData] = await Promise.all([
             readJson<Array<Element | StoredElementRef>>(nameOf('elements', 'elements.json')),
@@ -1248,6 +1351,13 @@ export function useWorkspace() {
           Number.isFinite(data.relicsData.newElementCount)
             ? Math.max(0, Math.floor(data.relicsData.newElementCount))
             : 0
+        const importedAchievements: Record<string, number> = {}
+        if (data.achievementsData && typeof data.achievementsData === 'object') {
+          for (const [key, value] of Object.entries(data.achievementsData)) {
+            const ts = Number(value)
+            if (Number.isFinite(ts) && ts > 0) importedAchievements[key] = ts
+          }
+        }
 
         // 规范化类别（保证字段完整）
         const importedCategories: ElementCategory[] = Array.isArray(data.categories)
@@ -1406,6 +1516,8 @@ export function useWorkspace() {
         setPositions(importedPositions)
         setRelics(importedRelics)
         setNewElementCount(importedNewElementCount)
+        setAchievements(importedAchievements)
+        claimedRef.current = new Set(Object.keys(importedAchievements))
         return {
           ok: true,
           message: `成功导入 ${importedElements.length} 个元素、${importedRecipes.length} 条配方、${importedCategories.length} 个类别、${importedHistory.length} 条历史`,
@@ -1457,6 +1569,7 @@ export function useWorkspace() {
     setPositions,
     relics,
     newElementCount,
+    achievements,
     isCrafting,
     craft,
     decomposeElement,

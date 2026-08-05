@@ -50,6 +50,25 @@ export interface Relic {
   svg: string
 }
 
+/** 成就 */
+export interface Achievement {
+  /** 成就 ID */
+  id: string
+  /** 成就名称 */
+  name: string
+  /** 成就描述 */
+  description: string
+  /** 成就图标（方形四角挖圆的底板 + 中央拟物图标） */
+  icon: string
+  /** 秘宝奖励：relicId → 数量 */
+  reward: Record<string, number>
+  /** 数量成就：按已发现元素/类别数量判定 */
+  metric?: 'elements' | 'categories'
+  targetCount?: number
+  /** 目标成就：需发现指定元素 id（全部发现才算完成） */
+  targetIds?: string[]
+}
+
 /** 合成配方 */
 export interface Recipe {
   id: string
