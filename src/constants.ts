@@ -106,7 +106,7 @@ const ELEMENT_BADGE_SVG = `    <svg viewBox="0 0 100 100" width="100" height="10
 const ELEMENT_BADGE_RULE =
   '按模板保留徽章结构，颜色换成该元素主题色系，渐变 id 唯一；中央主体浅亮色、拟物化，画在约 35~65 区域，简洁有层次，无额外装饰'
 
-/** 类别图标（洛可可金饰）模板（合成与拆解共用） */
+/** 类别图标（洛可可花纹）模板（合成与拆解共用） */
 const CATEGORY_ICON_SVG = `    <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="catBase" x1="0" y1="0" x2="0" y2="1">
@@ -131,7 +131,7 @@ export const CREATE_ELEMENTS_RULES = `- id 仅小写英文字母、数字、下�
 - 全新元素的 SVG 必须以「元素徽章」固定模板绘制：
 ${ELEMENT_BADGE_SVG}
 ${ELEMENT_BADGE_RULE}
-- 若创建全新类别，其 icon 必须以「洛可可金饰」固定模板绘制：
+- 若创建全新类别，其 icon 必须以「洛可可花纹」固定模板绘制：
 ${CATEGORY_ICON_SVG}
 ${CATEGORY_ICON_RULE}
 - 新类别名称必须正好 4 个汉字，古风典雅、寓意隽永；类别描述同样古朴雅致。
