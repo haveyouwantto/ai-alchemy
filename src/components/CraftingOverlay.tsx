@@ -80,7 +80,7 @@ export function CraftingOverlay({ show, message, inputs = [], streamText = '' }:
         </div>
 
         {/* 状态文字 */}
-        <p className="text-center font-medium text-amber-200">{message || '正在搅拌中...'}</p>
+        <p className="text-center font-serif font-medium text-amber-200">{message || '正在搅拌中...'}</p>
 
         {/* 进度条 */}
         <div className="h-2 w-full overflow-hidden rounded-full border border-amber-900/50 bg-[#1d1007]">
@@ -97,7 +97,7 @@ export function CraftingOverlay({ show, message, inputs = [], streamText = '' }:
             readOnly
             value={streamText}
             placeholder="AI 正在思考合成方案..."
-            className="alchemy-scroll h-40 w-full resize-none rounded-xl border border-amber-900/50 bg-[#1d1007]/80 p-3 text-sm leading-relaxed text-amber-100 placeholder-amber-200/40 outline-none focus:border-amber-400/60"
+            className="alchemy-scroll font-kai h-40 w-full resize-none rounded-xl border border-amber-900/50 bg-[#1d1007]/80 p-3 text-sm leading-relaxed text-amber-100 placeholder-amber-200/40 outline-none focus:border-amber-400/60"
           />
         </div>
 

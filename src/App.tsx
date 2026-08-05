@@ -458,7 +458,7 @@ export default function App() {
         )}
         {dot && <span className="absolute -right-1 -top-1 h-2 w-2 animate-pulse rounded-full bg-red-400" />}
       </span>
-      <span className="leading-none">{label}</span>
+      <span className="font-serif leading-none">{label}</span>
     </button>
   )
 
@@ -581,7 +581,7 @@ export default function App() {
       />
 
       {/* 底部提示条 */}
-      <div className="border-t-2 border-amber-900/40 bg-gradient-to-r from-[#3a2512] via-[#4a2e16] to-[#2b1a0d] px-3 py-1.5 text-center text-xs text-amber-200/70">
+      <div className="border-t-2 border-amber-900/40 bg-gradient-to-r from-[#3a2512] via-[#4a2e16] to-[#2b1a0d] px-3 py-1.5 text-center font-serif text-xs text-amber-200/70">
         <span className="hidden sm:inline">拖拽卡片到另一张上合成 · 拖到空白可移动 · 双击复制 · Ctrl+K 图鉴 · 选中后 Delete 删除</span>
         <span className="sm:hidden">拖拽卡片合成或移动 · 长按拖拽</span>
       </div>

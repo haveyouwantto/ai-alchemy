@@ -44,7 +44,7 @@ function ToastItem({ toast }: { toast: ToastData }) {
       <div className="relative z-10 flex items-start gap-3 p-4">
         <span className="text-2xl">{isSuccess ? '✨' : '⚠️'}</span>
         <div>
-          <p className="font-bold text-amber-200">{toast.title}</p>
+          <p className="font-serif font-bold text-amber-200">{toast.title}</p>
           {!toast.hideObtainText && toast.elements && toast.elements.length > 0 && (
             <p className="mt-0.5 text-sm text-amber-100">
               获得：

@@ -13,6 +13,10 @@ export default {
         'arrow-bounce': 'arrowBounce 1.2s ease-in-out infinite',
         'shake': 'shake 0.4s ease-in-out',
       },
+      fontFamily: {
+        serif: ['"Noto Serif SC"', 'ui-serif', 'Georgia', 'Cambria', '"Times New Roman"', 'Times', 'serif'],
+        kai: ['"LXGW WenKai"', '"Noto Serif SC"', 'ui-serif', 'serif'],
+      },
       keyframes: {
         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
         fadeOut: { '0%': { opacity: '1' }, '100%': { opacity: '0' } },
