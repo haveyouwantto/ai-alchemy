@@ -282,7 +282,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     }
   }, [open])
 
-  // 图数据：节点 = 已解锁元素；连线 = 配方输入 → 输出（只画参与方向）；默认展示按重要性加权最大生成树
+  // 图数据：节点 = 已解锁元素；连线 = 配方输入 → 输出（只画参与方向）；默认以世界之心为根逐层展开
   const graphData = useMemo(() => {
     const ids = new Set(elements.map((e) => e.id))
     const nodes: GraphNode[] = elements.map((e) => ({ ...e }))
@@ -481,7 +481,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
           <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图 · 元素关系网</h2>
           <div className="flex items-center gap-2">
             <span className="text-xs text-amber-200/80">
-              {graphData.nodes.filter((n) => String(n.id) !== WORLD_CORE_ID).length} 元素 · {links.length} 关系（广搜生成树）
+              {graphData.nodes.filter((n) => String(n.id) !== WORLD_CORE_ID).length} 元素 · {links.length} 关联
             </span>
             <button
               onClick={onClose}
