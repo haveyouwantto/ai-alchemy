@@ -8,6 +8,8 @@ interface CraftingOverlayProps {
   inputs?: Array<{ name: string; svg: string } | null>
   /** AI 流式输出文本（思考与笔记统一在此展示） */
   streamText?: string
+  /** 减法模式：公式行显示 − */
+  subtract?: boolean
 }
 
 /** 自动缩放 SVG 图标（inline 小尺寸展示，因为 SVG 内部可能是固定 100x100） */
@@ -22,7 +24,7 @@ function InlineIcon({ svg, size = 28 }: { svg: string; size?: number }) {
   )
 }
 
-export function CraftingOverlay({ show, message, inputs = [], streamText = '' }: CraftingOverlayProps) {
+export function CraftingOverlay({ show, message, inputs = [], streamText = '', subtract = false }: CraftingOverlayProps) {
   const streamRef = useRef<HTMLTextAreaElement>(null)
 
   // 自动滚动到底部
@@ -65,7 +67,9 @@ export function CraftingOverlay({ show, message, inputs = [], streamText = '' }:
             ) : (
               <span className="text-amber-200/50">?</span>
             )}
-            <span className="text-lg font-bold text-amber-400">+</span>
+            <span className={`text-lg font-bold ${subtract ? 'text-red-400' : 'text-amber-400'}`}>
+              {subtract ? '−' : '+'}
+            </span>
             {inputs[1] ? (
               <span className="flex flex-col items-center gap-0.5">
                 <InlineIcon svg={inputs[1].svg} size={30} />

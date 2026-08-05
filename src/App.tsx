@@ -158,6 +158,8 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [craftMessage, setCraftMessage] = useState('')
   const [craftInputs, setCraftInputs] = useState<Array<{ name: string; svg: string } | null>>([])
+  /** 本次合成是否处于减法模式（弹窗公式行显示 −） */
+  const [craftSubtract, setCraftSubtract] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [flashUids, setFlashUids] = useState<Set<string>>(new Set())
 
@@ -193,6 +195,7 @@ export default function App() {
         { name: elementA.name, svg: elementA.svg },
         { name: elementB.name, svg: elementB.svg },
       ])
+      setCraftSubtract(!(elementA.relicId ?? elementB.relicId) && subtractMode)
       setStreamText('')
       setCraftMessage('正在搅拌中...')
       // 预闪烁两张卡
@@ -219,11 +222,13 @@ export default function App() {
       )
       if (outcome.type === 'error') {
         setCraftInputs([])
+        setCraftSubtract(false)
         pushToast(`炼金术失灵：${outcome.message}`, undefined, 'error')
         return
       }
       if (outcome.type === 'refused') {
         setCraftInputs([])
+        setCraftSubtract(false)
         pushToast(`贤者拒绝了这次请求：${outcome.message}`, undefined, 'error')
         return
       }
@@ -249,7 +254,10 @@ export default function App() {
         pushToast(`🏺 秘宝奖励 +${outcome.relicReward}：合成出新的元素后，黑化秘宝降临`, undefined, 'success')
       }
       // 合成完成，清空合成元素展示
-      setTimeout(() => setCraftInputs([]), 500)
+      setTimeout(() => {
+        setCraftInputs([])
+        setCraftSubtract(false)
+      }, 500)
     },
     [craft, isCrafting, aiConfig, pushToast, subtractMode],
   )
@@ -886,6 +894,7 @@ export default function App() {
         message={craftMessage}
         inputs={craftInputs}
         streamText={streamText}
+        subtract={craftSubtract}
       />
 
       {/* 新元素发现动画：中央金光 → 飞向新卡 */}
