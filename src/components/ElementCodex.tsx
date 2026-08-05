@@ -274,9 +274,19 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-amber-700/40 bg-[#8b5a2b] shadow-2xl">
         {/* 书封头 */}
-        <div className="flex items-center justify-between border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
-          <h2 className="font-serif text-xl font-bold tracking-widest">📖 元素图鉴 · 天地之书</h2>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-xl font-bold tracking-widest">📖 元素图鉴 · 天地之书</h2>
+            <button
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
+              aria-label="关闭"
+            >
+              ✕
+            </button>
+          </div>
+          {/* 第二行：搜索 + 排序 */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {/* 搜索：默认只显示放大镜，点击后展开输入框 */}
             {searchOpen ? (
               <>
@@ -327,13 +337,6 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
                 按名称
               </button>
             </div>
-            <button
-              onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
-              aria-label="关闭"
-            >
-              ✕
-            </button>
           </div>
         </div>
 
