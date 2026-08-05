@@ -66,8 +66,8 @@ export const RELIC_TEMPLATES: Element[] = [
 export const INITIAL_RELIC_COUNTS: Record<string, number> = {
   nigredo: 5,
   albedo: 3,
-  citrinitas: 3,
-  rubedo: 1,
+  citrinitas: 1,
+  rubedo: 0,
 }
 
 /** 每合成出多少个新元素，奖励 1 个「黑化」 */
@@ -75,6 +75,12 @@ export const RELIC_REWARD_NEW_ELEMENTS = 10
 
 /** 每解锁多少个元素，奖励 1 个「白化」 */
 export const RELIC_ALBEDO_UNLOCK_INTERVAL = 20
+
+/** 每解锁多少个元素，奖励 1 个「黄化」 */
+export const RELIC_CITRINITAS_UNLOCK_INTERVAL = 40
+
+/** 每解锁多少个元素，奖励 1 个「赤化」 */
+export const RELIC_RUBEDO_UNLOCK_INTERVAL = 80
 
 /** 元素徽章 SVG 模板（合成与拆解共用） */
 const ELEMENT_BADGE_SVG = `    <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">

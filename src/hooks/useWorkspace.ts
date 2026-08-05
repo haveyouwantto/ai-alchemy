@@ -18,7 +18,9 @@ import {
   DECOMPOSE_SYSTEM_PROMPT,
   INITIAL_RELIC_COUNTS,
   RELIC_ALBEDO_UNLOCK_INTERVAL,
+  RELIC_CITRINITAS_UNLOCK_INTERVAL,
   RELIC_REWARD_NEW_ELEMENTS,
+  RELIC_RUBEDO_UNLOCK_INTERVAL,
   RELIC_PROMPTS,
   RELIC_TEMPLATES,
   RELIC_VERBS,
@@ -217,6 +219,12 @@ function loadStoredWorkspace(): StoredWorkspace {
                 albedo:
                   INITIAL_RELIC_COUNTS.albedo +
                   Math.floor(unlockedElements.length / RELIC_ALBEDO_UNLOCK_INTERVAL),
+                citrinitas:
+                  INITIAL_RELIC_COUNTS.citrinitas +
+                  Math.floor(unlockedElements.length / RELIC_CITRINITAS_UNLOCK_INTERVAL),
+                rubedo:
+                  INITIAL_RELIC_COUNTS.rubedo +
+                  Math.floor(unlockedElements.length / RELIC_RUBEDO_UNLOCK_INTERVAL),
               }
             }
             // 补齐缺失秘宝的初始数量（如新加入的白化）
@@ -494,7 +502,7 @@ export function useWorkspace() {
     setCraftHistory([])
   }, [])
 
-  /** 将一批元素注册为「已解锁」（图鉴数据；已存在则跳过）；每解锁 20 个奖励 1 个白化 */
+  /** 将一批元素注册为「已解锁」（图鉴数据；已存在则跳过）；按解锁数量奖励白化/黄化/赤化 */
   const unlockElements = useCallback((items: Element[]) => {
     if (items.length === 0) return
     const prev = stateRef.current.unlockedElements
@@ -502,12 +510,15 @@ export function useWorkspace() {
     const fresh = items.filter((e) => !existing.has(e.id))
     if (fresh.length === 0) return
     const next = [...prev, ...fresh]
-    const awarded =
-      Math.floor(next.length / RELIC_ALBEDO_UNLOCK_INTERVAL) -
-      Math.floor(prev.length / RELIC_ALBEDO_UNLOCK_INTERVAL)
-    if (awarded > 0) {
-      setRelics((r) => ({ ...r, albedo: (r.albedo ?? 0) + awarded }))
+    const awardRelic = (interval: number, relicId: string) => {
+      const awarded = Math.floor(next.length / interval) - Math.floor(prev.length / interval)
+      if (awarded > 0) {
+        setRelics((r) => ({ ...r, [relicId]: (r[relicId] ?? 0) + awarded }))
+      }
     }
+    awardRelic(RELIC_ALBEDO_UNLOCK_INTERVAL, 'albedo')
+    awardRelic(RELIC_CITRINITAS_UNLOCK_INTERVAL, 'citrinitas')
+    awardRelic(RELIC_RUBEDO_UNLOCK_INTERVAL, 'rubedo')
     setUnlockedElements(next)
   }, [])
 
