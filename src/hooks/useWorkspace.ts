@@ -212,6 +212,10 @@ function loadStoredWorkspace(): StoredWorkspace {
                   Math.floor(unlockedElements.length / RELIC_REWARD_NEW_ELEMENTS),
               }
             }
+            // 补齐缺失秘宝的初始数量（如新加入的白化）
+            for (const [key, value] of Object.entries(INITIAL_RELIC_COUNTS)) {
+              if (!(key in relics)) relics[key] = value
+            }
             return relics
           })(),
           newElementCount:
