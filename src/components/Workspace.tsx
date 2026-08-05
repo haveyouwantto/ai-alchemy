@@ -19,6 +19,8 @@ interface WorkspaceProps {
   /** 桌面卡片坐标（key=instanceUid，单位 px，相对工作区容器左上角） */
   positions: Record<string, CardPosition>
   onPositionsChange: (updater: React.SetStateAction<Record<string, CardPosition>>) => void
+  /** 整理桌面请求版本号：>0 且变化时触发平铺 */
+  tidyVersion: number
   onSelect: (index: number) => void
   onCraft: (a: Element, b: Element) => void
   onDuplicate: (element: Element) => void
@@ -115,6 +117,7 @@ export function Workspace({
   flashUids,
   positions,
   onPositionsChange,
+  tidyVersion,
   onSelect,
   onCraft,
   onDuplicate,
@@ -222,6 +225,58 @@ export function Workspace({
       return next
     })
   }, [elements, onPositionsChange])
+
+  /** 整理桌面：把所有卡片平铺为整齐网格（按真实尺寸逐行居中摆放） */
+  useEffect(() => {
+    if (tidyVersion <= 0) return
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    onPositionsChange((prev) => {
+      const cw = rect.width
+      const ch = rect.height
+      const gap = 18
+      interface TidyItem {
+        key: string
+        size: Size
+      }
+      const items: TidyItem[] = elements.map((el, i) => {
+        const key = uidKey(el, i)
+        return { key, size: getCardSize(key) }
+      })
+      if (items.length === 0) return prev
+
+      // 逐行分组：超出右边界则换行
+      const rows: TidyItem[][] = []
+      let curRow: TidyItem[] = []
+      let cursor = PADDING
+      for (const it of items) {
+        if (curRow.length > 0 && cursor + it.size.w + gap > cw - PADDING) {
+          rows.push(curRow)
+          curRow = []
+          cursor = PADDING
+        }
+        curRow.push(it)
+        cursor += it.size.w + gap
+      }
+      if (curRow.length > 0) rows.push(curRow)
+
+      // 逐行居中，并保证不超出容器下边界
+      const next = { ...prev }
+      let y = PADDING
+      for (const row of rows) {
+        const totalW = row.reduce((sum, it) => sum + it.size.w, 0) + gap * (row.length - 1)
+        let x = Math.max(PADDING, (cw - totalW) / 2)
+        const rowMaxH = Math.max(...row.map((it) => it.size.h))
+        for (const it of row) {
+          const maxY = Math.max(PADDING, ch - it.size.h - PADDING)
+          next[it.key] = { x: Math.round(x), y: Math.round(Math.min(y, maxY)) }
+          x += it.size.w + gap
+        }
+        y += rowMaxH + gap
+      }
+      return next
+    })
+  }, [tidyVersion, elements, getCardSize, onPositionsChange])
 
   /** 加载时与窗口尺寸变化时，把超出工作区范围的卡片拉回可视区域 */
   useLayoutEffect(() => {

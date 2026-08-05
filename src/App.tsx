@@ -38,6 +38,8 @@ export default function App() {
   const [showCodex, setShowCodex] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  /** 整理桌面请求版本号（每次 +1 触发工作区平铺） */
+  const [tidyVersion, setTidyVersion] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const [craftMessage, setCraftMessage] = useState('')
@@ -211,6 +213,13 @@ export default function App() {
     pushToast('桌面已重置', undefined, 'success')
   }, [confirmClear, resetWorkspace, pushToast])
 
+  // ---- 整理桌面：平铺所有卡片 ----
+  const handleTidyWorkspace = useCallback(() => {
+    setTidyVersion((v) => v + 1)
+    setSelectedIndex(null)
+    pushToast('桌面已整理，卡片已平铺', undefined, 'info')
+  }, [pushToast])
+
   // ---- 导入 / 导出 ----
   const handleExport = useCallback(async () => {
     try {
@@ -341,6 +350,10 @@ export default function App() {
             <span className="text-lg leading-none">📂</span>
             <span className="hidden md:inline">导入</span>
           </ToolButton>
+          <ToolButton onClick={handleTidyWorkspace} title="整理桌面：平铺所有卡片">
+            <span className="text-lg leading-none">🗂️</span>
+            <span className="hidden md:inline">整理</span>
+          </ToolButton>
           <ToolButton onClick={handleClearWorkspace} title="清空桌面" active={confirmClear}>
             <span className="text-lg leading-none">🧹</span>
             <span className="hidden md:inline">{confirmClear ? '确认清空？' : '清空桌面'}</span>
@@ -367,6 +380,7 @@ export default function App() {
         flashUids={flashUids}
         positions={positions}
         onPositionsChange={setPositions}
+        tidyVersion={tidyVersion}
         onSelect={setSelectedIndex}
         onCraft={handleCraft}
         onDuplicate={handleDuplicate}
