@@ -18,11 +18,16 @@ type GraphNode = NodeObject<Element>
 /** 节点绘制半径（世界坐标单位；随缩放一起变化） */
 const NODE_R = 32
 
-/** Kruskal 最小生成树（按节点 id 排序保证确定性；不连通时生成森林） */
-function kruskalMst(
+/** 最大生成树：边权 = 两端重要度之和；仍是树，但枢纽元素优先连最重要的邻居 */
+function maximumSpanningTree(
   nodeIds: string[],
   edges: Array<{ source: string; target: string }>,
 ): Array<{ source: string; target: string }> {
+  const deg = new Map<string, number>()
+  for (const e of edges) {
+    deg.set(e.source, (deg.get(e.source) ?? 0) + 1)
+    deg.set(e.target, (deg.get(e.target) ?? 0) + 1)
+  }
   const parent = new Map<string, string>()
   const find = (x: string): string => {
     const p = parent.get(x) ?? x
@@ -36,7 +41,12 @@ function kruskalMst(
     parent.set(find(a), find(b))
   }
   for (const id of nodeIds) parent.set(id, id)
-  const sorted = [...edges].sort((a, b) => `${a.source}|${a.target}`.localeCompare(`${b.source}|${b.target}`))
+  const sorted = [...edges].sort((a, b) => {
+    const wa = (deg.get(a.source) ?? 0) + (deg.get(a.target) ?? 0)
+    const wb = (deg.get(b.source) ?? 0) + (deg.get(b.target) ?? 0)
+    if (wb !== wa) return wb - wa
+    return `${a.source}|${a.target}`.localeCompare(`${b.source}|${b.target}`)
+  })
   const tree: Array<{ source: string; target: string }> = []
   for (const e of sorted) {
     if (find(e.source) !== find(e.target)) {
@@ -45,6 +55,69 @@ function kruskalMst(
     }
   }
   return tree
+}
+
+/** 径向树布局：按子树叶子数分配角度扇区，保证任意两条边不相交、向四面八方展开 */
+function radialTreeLayout(
+  nodeIds: string[],
+  links: Array<{ source: string; target: string }>,
+): Map<string, { x: number; y: number }> {
+  const RING_GAP = 110
+  const adj = new Map<string, string[]>()
+  for (const id of nodeIds) adj.set(id, [])
+  for (const l of links) {
+    adj.get(l.source)?.push(l.target)
+    adj.get(l.target)?.push(l.source)
+  }
+  // 根 = 树中从不作为产物出现的元素（纯参与源头）；没有则取连接最多的节点
+  const targets = new Set(links.map((l) => l.target))
+  let roots = nodeIds.filter((id) => !targets.has(id))
+  if (roots.length === 0 && nodeIds.length > 0) {
+    const deg = new Map<string, number>()
+    for (const l of links) {
+      deg.set(l.source, (deg.get(l.source) ?? 0) + 1)
+      deg.set(l.target, (deg.get(l.target) ?? 0) + 1)
+    }
+    roots = [nodeIds.reduce((a, b) => ((deg.get(b) ?? 0) > (deg.get(a) ?? 0) ? b : a))]
+  }
+
+  // 子树叶子数（后序一次算完）
+  const subtreeSize = new Map<string, number>()
+  const dfsSize = (id: string, parent: string): number => {
+    let s = 1
+    for (const c of adj.get(id) ?? []) {
+      if (c !== parent) s += dfsSize(c, id)
+    }
+    subtreeSize.set(id, s)
+    return s
+  }
+  for (const r of roots) dfsSize(r, '')
+
+  const pos = new Map<string, { x: number; y: number }>()
+  const place = (id: string, parent: string, depth: number, sectorStart: number, sectorSize: number) => {
+    if (depth === 0) {
+      pos.set(id, { x: 0, y: 0 })
+    } else {
+      const angle = sectorStart + sectorSize / 2
+      const radius = depth * RING_GAP
+      pos.set(id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius })
+    }
+    const children = (adj.get(id) ?? []).filter((c) => c !== parent)
+    if (children.length === 0) return
+    let cursor = sectorStart - sectorSize / 2
+    for (const c of children) {
+      const size = ((subtreeSize.get(c) ?? 1) / (subtreeSize.get(id) ?? 1)) * sectorSize
+      place(c, id, depth + 1, cursor + size / 2, size)
+      cursor += size
+    }
+  }
+  let cursor = 0
+  for (const r of roots) {
+    const size = ((subtreeSize.get(r) ?? 1) / nodeIds.length) * 2 * Math.PI
+    place(r, '', 0, cursor + size / 2, size)
+    cursor += size
+  }
+  return pos
 }
 
 /** 角度均衡力（表面张力）：让每个节点的相邻边尽量均匀分布、夹角趋于最大 */
@@ -91,7 +164,7 @@ function createAngleSpreadForce(
         const excess = gap - target
         if (excess > 0.05) {
           // 缺口过大：把 u 顺时针、v 逆时针拉近，缩小大缺口、撑开其余夹角
-          const f = Math.min(excess, Math.PI) * 2.0 * alpha
+          const f = Math.min(excess, Math.PI) * 2.5 * alpha
           applyTangential(node, u.n, f, 1)
           applyTangential(node, v.n, f, -1)
         }
@@ -101,6 +174,46 @@ function createAngleSpreadForce(
   ;(force as { initialize?: (n: GraphNode[]) => void }).initialize = (n: GraphNode[]) => {
     nodes = n
     nodesById = new Map(n.map((x) => [String(x.id), x]))
+  }
+  return force
+}
+
+/** 边相交规避力：检测相交线段，把四个端点沿交点推开，尽量消除交叉（配合自由力保持弹性） */
+function createEdgeCrossForce(
+  links: Array<{ source: string; target: string }>,
+): (alpha: number) => void {
+  let byId = new Map<string, GraphNode>()
+  const orient = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) =>
+    (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+  const segIntersect = (a: GraphNode, b: GraphNode, c: GraphNode, d: GraphNode): boolean =>
+    orient(a.x!, a.y!, b.x!, b.y!, c.x!, c.y!) * orient(a.x!, a.y!, b.x!, b.y!, d.x!, d.y!) < 0 &&
+    orient(c.x!, c.y!, d.x!, d.y!, a.x!, a.y!) * orient(c.x!, c.y!, d.x!, d.y!, b.x!, b.y!) < 0
+
+  const force = (alpha: number) => {
+    const segs = links
+      .map((l) => ({ a: byId.get(l.source), b: byId.get(l.target) }))
+      .filter((s): s is { a: GraphNode; b: GraphNode } => !!s.a && !!s.b)
+    for (let i = 0; i < segs.length; i++) {
+      for (let j = i + 1; j < segs.length; j++) {
+        const e1 = segs[i]
+        const e2 = segs[j]
+        if (e1.a === e2.a || e1.a === e2.b || e1.b === e2.a || e1.b === e2.b) continue
+        if (!segIntersect(e1.a, e1.b, e2.a, e2.b)) continue
+        const ix = (e1.a.x! + e1.b.x! + e2.a.x! + e2.b.x!) / 4
+        const iy = (e1.a.y! + e1.b.y! + e2.a.y! + e2.b.y!) / 4
+        const f = 0.6 * alpha
+        for (const n of [e1.a, e1.b, e2.a, e2.b]) {
+          const dx = n.x! - ix
+          const dy = n.y! - iy
+          const d = Math.hypot(dx, dy) || 1
+          n.vx = (n.vx ?? 0) + (dx / d) * f
+          n.vy = (n.vy ?? 0) + (dy / d) * f
+        }
+      }
+    }
+  }
+  ;(force as { initialize?: (n: GraphNode[]) => void }).initialize = (n: GraphNode[]) => {
+    byId = new Map(n.map((x) => [String(x.id), x]))
   }
   return force
 }
@@ -126,7 +239,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     return () => ro.disconnect()
   }, [open])
 
-  // 图数据：节点 = 已解锁元素；连线 = 配方输入 → 输出（只画参与方向）；默认只展示最小生成树骨架
+  // 图数据：节点 = 已解锁元素；连线 = 配方输入 → 输出（只画参与方向）；默认展示按重要性加权最大生成树
   const graphData = useMemo(() => {
     const ids = new Set(elements.map((e) => e.id))
     const nodes: GraphNode[] = elements.map((e) => ({ ...e }))
@@ -142,20 +255,24 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
       }
     }
     const fullLinks = Array.from(fullMap.values())
-    const mstLinks = kruskalMst(
+    const treeLinks = maximumSpanningTree(
       nodes.map((n) => String(n.id)),
       fullLinks,
     )
-    // 树模式：径向初始布局（黄金角螺旋），让树向四面八方展开，不做垂直分层
-    const mstNodes: GraphNode[] = nodes.map((n, i) => {
-      const angle = i * 2.39996
-      const radius = Math.sqrt(i + 1) * 58
-      return { ...n, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
+    // 树模式：径向树布局并固定节点，保证任意两条边不相交、向四面八方展开
+    const layout = radialTreeLayout(
+      nodes.map((n) => String(n.id)),
+      treeLinks,
+    )
+    // 径向树布局只作初始位置，不固定节点——保留弹性
+    const mstNodes: GraphNode[] = nodes.map((n) => {
+      const p = layout.get(String(n.id))
+      return p ? { ...n, x: p.x, y: p.y } : { ...n }
     })
-    return { nodes, mstNodes, fullLinks, mstLinks }
+    return { nodes, mstNodes, fullLinks, treeLinks }
   }, [elements, recipes])
 
-  const links = graphData.mstLinks
+  const links = graphData.treeLinks
   const nodes = graphData.mstNodes
 
   // 元素徽章 SVG → canvas 图片缓存（StrictMode 安全：加载状态存 ref，重复挂载不会丢回调）
@@ -185,6 +302,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     g.d3Force('link')?.distance(115)
     g.d3Force('center')?.strength(0.05)
     g.d3Force('angleSpread', createAngleSpreadForce(links))
+    g.d3Force('edgeCross', createEdgeCrossForce(links))
   }, [links, size])
 
   // 选中节点的邻接元素
@@ -302,7 +420,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
           <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图 · 元素关系网</h2>
           <div className="flex items-center gap-2">
             <span className="text-xs text-amber-200/80">
-              {graphData.nodes.length} 元素 · {links.length} 关系（最小生成树）
+              {graphData.nodes.length} 元素 · {links.length} 关系（最大生成树）
             </span>
             <button
               onClick={onClose}
@@ -412,7 +530,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
 
         {/* 底部提示 */}
         <div className="border-t border-amber-900/30 bg-[#7a4a20]/95 px-4 py-2 text-xs text-amber-100/80">
-          实线 = 最小生成树骨架 · 点击元素：绿虚线 = 参与合成，橙虚线 = 获得方式（不影响布局）· 滚轮缩放 · 拖动平移
+          实线 = 最大生成树（按重要性加权、径向无交叉布局）· 点击元素：绿虚线 = 参与合成，橙虚线 = 获得方式 · 滚轮缩放 · 拖动平移
         </div>
       </div>
 
