@@ -60,25 +60,30 @@ export const SYSTEM_PROMPT_TEMPLATE = `你是一个炼金术合成规则生成�
      * 保留圆形徽章结构（光晕圆 + 深色渐变圆盘 + 细描边 + 左上高光），把模板中的蓝色系替换为该元素主题色系：深色圆盘用该色系的深色，光晕与描边用其亮色
      * 在圆盘正中（约 35~65 区域）绘制一个浅亮色、拟物化的主体图形——具体物件画出清晰直观的实物造型，抽象概念则用简洁具象的象征图形表达；主体用同色系深浅渐变与高光体现层次与体积感，保持简洁精致，避免零碎细节
      * 除圆盘与中央主体外，不要额外背景、边框、文字或装饰；把模板里的渐变 id（elementGlow/elementPlate）改为与元素相关且唯一的 id（如 fireGlow、firePlate），不要使用 grad、g 这类通用 id
-   - 类别（category）icon 必须使用与元素完全不同的「纹章盾牌」画风（元素是圆形徽章，类别必须是盾形，保证区分度）：
+   - 类别（category）icon 使用与元素完全不同的「洛可可金饰」画风：浅色羊皮纸底 + 复杂金色卷草纹框架（既不是深色圆形徽章，也不是盾牌，保证区分度）：
      <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
        <defs>
-         <linearGradient id="catPlate" x1="0" y1="0" x2="0" y2="1">
-           <stop offset="0%" stop-color="#6b4423"/>
-           <stop offset="100%" stop-color="#33200f"/>
-         </linearGradient>
-         <linearGradient id="catGlyph" x1="0" y1="0" x2="0" y2="1">
-           <stop offset="0%" stop-color="#fef3c7"/>
-           <stop offset="100%" stop-color="#e9b96e"/>
+         <linearGradient id="catBase" x1="0" y1="0" x2="0" y2="1">
+           <stop offset="0%" stop-color="#fffdf4"/>
+           <stop offset="100%" stop-color="#f1e2c0"/>
          </linearGradient>
        </defs>
-       <path d="M50 12 C58 12 72 16 76 22 Q78 25 78 30 L78 56 Q78 72 66 80 L50 90 L34 80 Q22 72 22 56 L22 30 Q22 25 24 22 C28 16 42 12 50 12 Z" fill="url(#catPlate)" stroke="#e9b96e" stroke-width="2.5" stroke-linejoin="round"/>
-       <!-- 在此处绘制更大更粗的居中主体图形 -->
+       <rect x="4" y="4" width="92" height="92" rx="26" fill="url(#catBase)" stroke="#c9a25c" stroke-width="2"/>
+       <rect x="9" y="9" width="82" height="82" rx="20" fill="none" stroke="#c9a25c" stroke-width="3"/>
+       <path d="M30 10 C22 9 15 13 14 20 C13 27 18 32 24 30 C29 28 29 22 24 21" fill="none" stroke="#c9a25c" stroke-width="3.5" stroke-linecap="round"/>
+       <path d="M30 10 C22 9 15 13 14 20 C13 27 18 32 24 30 C29 28 29 22 24 21" fill="none" stroke="#c9a25c" stroke-width="3.5" stroke-linecap="round" transform="translate(100 0) scale(-1 1)"/>
+       <path d="M30 10 C22 9 15 13 14 20 C13 27 18 32 24 30 C29 28 29 22 24 21" fill="none" stroke="#c9a25c" stroke-width="3.5" stroke-linecap="round" transform="translate(0 100) scale(1 -1)"/>
+       <path d="M30 10 C22 9 15 13 14 20 C13 27 18 32 24 30 C29 28 29 22 24 21" fill="none" stroke="#c9a25c" stroke-width="3.5" stroke-linecap="round" transform="translate(100 100) scale(-1 -1)"/>
+       <circle cx="50" cy="12" r="3.5" fill="#c9a25c"/>
+       <circle cx="88" cy="50" r="3.5" fill="#c9a25c"/>
+       <circle cx="50" cy="88" r="3.5" fill="#c9a25c"/>
+       <circle cx="12" cy="50" r="3.5" fill="#c9a25c"/>
+       <!-- 在此处绘制居中的主体图形（约 34~66 区域） -->
      </svg>
      类别模板规则：
-     * 盾形与描边必须完全照抄模板，禁止改成圆形、圆角矩形等其他形状；盾面用该类别主题色的深色渐变，描边用其亮色
-     * 中央拟物主体必须画得更大更粗：约占盾面 50%~75%（约 26~74 区域），用粗线条（5 以上）与简洁轮廓，只保留一眼可辨的核心形状，严禁细小零碎细节（缩小到 14px 后无法辨认）
-     * 渐变 id 必须与类别相关且唯一（如 cosmosPlate/cosmosGlyph），不要使用 grad、g 这类通用 id；不要任何额外背景、边框装饰或文字
+     * 浅色羊皮纸底与金色卷草纹框架必须照抄模板（双层金框 + 四角卷草纹 + 四边圆点花饰），禁止改成深色底、圆形徽章或盾牌
+     * 中央拟物主体画得大而粗：约占 34~66 区域，用金棕色或该类别主题色的粗线条与简洁轮廓，只保留一眼可辨的核心形状，严禁细小零碎细节（缩小到 14px 后无法辨认）
+     * 渐变 id 与类别相关且唯一（如 cosmosBase），不要使用 grad、g 这类通用 id；不要添加模板之外的额外装饰或文字
    - 类别名称要古风典雅、寓意隽永，正好4个汉字；类别描述同样古朴雅致
 7. 必须调用 craft_recipe 绑定本次的输入和输出。
 注意：不要生成与输入元素完全相同的产物；具体优先、避免浮夸。`
@@ -145,7 +150,7 @@ export const FUNCTIONS = [
             properties: {
               id: { type: 'string', description: '必须用英语书写：小写字母 a-z、数字 0-9、下划线，单词间用下划线连接；禁止中文拼音或非英文字符' },
               name: { type: 'string', description: '类别中文名称，要求古风典雅、寓意隽永，勿用直白口语或网络用语' },
-              icon: { type: 'string', description: '100x100 纯矢量 SVG，遵循系统提示词中的「纹章盾牌」模板：盾形底盘 + 中央拟物图形更大更粗犷，与圆形元素徽章完全不同，保证 14~22px 小尺寸下清晰可辨' },
+              icon: { type: 'string', description: '100x100 纯矢量 SVG，遵循系统提示词中的「洛可可金饰」模板：浅色羊皮纸底 + 金色卷草纹框架，中央大主体图形，与元素徽章完全不同，保证 14~22px 小尺寸下清晰可辨' },
               description: { type: 'string', description: '类别描述（中文，古朴雅致）' },
             },
             required: ['id', 'name', 'icon', 'description'],
