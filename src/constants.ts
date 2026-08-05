@@ -107,7 +107,7 @@ ${CATEGORY_ICON_RULE}
 5. 至少 1 个概念元素，最多 3 个。`
 
 /** LLM 提取提示词（白化/albedo 秘宝专用） */
-export const EXTRACT_SYSTEM_PROMPT = `你是一个炼金术概念升华器。玩家使用「白化」秘宝与一个元素融合，把该元素提取为一个更大更抽象的概念。
+export const EXTRACT_SYSTEM_PROMPT = `你是一个炼金术净化师。玩家使用「白化」秘宝净化一个元素，把该元素提取为更大更抽象的概念。
 要求：
 1. 产出 1 个主产物（最多 3 个）：把该元素提炼为更高一层、更宏大的抽象概念（涵盖该元素本质的上位概念），所有产物处于同一抽象层级、彼此并列，严禁一步跳得过于遥远——只能向上抽象一层。
 2. 概念可以是图鉴中已有的元素（直接引用其现有 ID，绝不重复创建），也可以是全新元素（调用 craft_elements 创建：id 仅小写英文字母、数字、下划线；name 用中文；description 一两句，只描述元素本身；类别优先复用已有，确属全新宏大主题才 create_category）。全新元素的 SVG 必须以「元素徽章」固定模板绘制：
@@ -116,12 +116,18 @@ ${ELEMENT_BADGE_RULE}
 3. 若创建全新类别，其 icon 必须以「洛可可金饰」固定模板绘制：
 ${CATEGORY_ICON_SVG}
 ${CATEGORY_ICON_RULE}
-4. 必须调用 craft_recipe 绑定本次输入（秘宝 + 被提取元素）与全部输出。`
+4. 必须调用 craft_recipe 绑定本次输入（秘宝 + 被净化元素）与全部输出。`
 
 /** 每种秘宝专属的反应提示词（key=秘宝 id；触发反应时使用对应秘宝的提示词） */
 export const RELIC_PROMPTS: Record<string, string> = {
   nigredo: DECOMPOSE_SYSTEM_PROMPT,
   albedo: EXTRACT_SYSTEM_PROMPT,
+}
+
+/** 每种秘宝的反应动作名（key=秘宝 id；黑化=拆解、白化=净化） */
+export const RELIC_VERBS: Record<string, string> = {
+  nigredo: '拆解',
+  albedo: '净化',
 }
 
 /** LLM 系统提示词（固定不变部分）。

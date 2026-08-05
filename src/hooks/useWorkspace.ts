@@ -20,6 +20,7 @@ import {
   RELIC_REWARD_NEW_ELEMENTS,
   RELIC_PROMPTS,
   RELIC_TEMPLATES,
+  RELIC_VERBS,
 } from '../constants'
 import { parseToolArguments, streamChatCompletion } from '../aiClient'
 import { sanitizeSVG, uuid } from '../utils'
@@ -647,23 +648,24 @@ export function useWorkspace() {
           return { type: 'error', message: isDecompose ? '尚未配置 AI，无法触发秘宝' : '尚未配置 AI，无法生成新合成配方' }
         }
 
+        const relicInput = isDecompose ? (inputA.relicId ? inputA : inputB) : null
+        const relicVerb = relicInput ? RELIC_VERBS[relicInput.relicId ?? ''] ?? '反应' : ''
         const messages: ChatMessage[] = isDecompose
           ? (() => {
-              const relicInput = inputA.relicId ? inputA : inputB
               const elemInput = inputA.relicId ? inputB : inputA
               return [
                 { role: 'system', content: decomposePrompt! },
                 {
                   role: 'user',
-                  content: `【秘宝】${relicInput.name}（ID: ${relicInput.id}）\n【待拆解元素】${elemInput.name}（ID: ${elemInput.id}，类别：${
+                  content: `【秘宝】${relicInput!.name}（ID: ${relicInput!.id}）\n【待处理元素】${elemInput.name}（ID: ${elemInput.id}，类别：${
                     stateRef.current.categories.find((c) => c.id === elemInput.categoryId)?.name ?? elemInput.categoryId
-                  }）${elemInput.description ? `：${elemInput.description}` : ''}\n\n请使用「${relicInput.name}」把该元素拆解为 1~3 个组成它的概念元素（可引用已有元素 ID 或创建新元素，产物并列、尽量多拆），并调用 craft_recipe 绑定本次输入与输出。`,
+                  }）${elemInput.description ? `：${elemInput.description}` : ''}\n\n请使用「${relicInput!.name}」触发秘宝反应，产出概念元素（可引用已有元素 ID 或创建新元素，产物并列），并调用 craft_recipe 绑定本次输入与输出。`,
                 },
               ]
             })()
           : buildMessages(inputA, inputB)
-        onMessage(isDecompose ? '秘宝之力涌动中...' : '正在解析元素...')
-        onMessage(isDecompose ? '概念裂解中...' : '贤者之石充能中...')
+        onMessage(isDecompose ? `${relicInput!.name}${relicVerb}中...` : '正在解析元素...')
+        onMessage(isDecompose ? `${relicVerb}进行中...` : '贤者之石充能中...')
 
         // 多轮工具调用中累积的状态
         const newElements: Element[] = []
@@ -683,7 +685,7 @@ export function useWorkspace() {
             (text) => {
               craftNote += text
               onStream?.(text)
-              onMessage(isDecompose ? '概念裂解中...' : '贤者之石充能中...')
+              onMessage(isDecompose ? `${relicVerb}进行中...` : '贤者之石充能中...')
             },
             (text) => onReasoning?.(text),
           )
@@ -958,7 +960,7 @@ export function useWorkspace() {
           setNewElementCount(nextCount)
         }
 
-        onMessage(isDecompose ? '概念析出...' : '凝固新元素...')
+        onMessage(isDecompose ? `${relicVerb}完成...` : '凝固新元素...')
         return {
           type: 'ai',
           added,
