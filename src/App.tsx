@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import type { AIConfig, Element } from './types'
+import type { AIConfig, Element, Recipe } from './types'
 import { ACHIEVEMENTS, RELIC_PROMPTS, RELIC_TEMPLATES } from './constants'
 import { useWorkspace } from './hooks/useWorkspace'
 import { AchievementsModal } from './components/AchievementsModal'
@@ -7,6 +7,7 @@ import { Workspace } from './components/Workspace'
 import { ElementCodex } from './components/ElementCodex'
 import { RelicCodex } from './components/RelicCodex'
 import { TransmuteModal } from './components/TransmuteModal'
+import { RelicConfirmModal } from './components/RelicConfirmModal'
 import { Tutorial } from './components/Tutorial'
 
 // 世界地图依赖较大的力导向渲染库，懒加载避免拖慢首屏
@@ -86,6 +87,12 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   /** 赤化点化：待提交说服文本（relic=赤化，element=被点化元素） */
   const [pendingTransmute, setPendingTransmute] = useState<{ relic: Element; element: Element } | null>(null)
+  /** 秘宝使用二次确认（含重复使用警告） */
+  const [pendingRelicConfirm, setPendingRelicConfirm] = useState<{
+    relic: Element
+    element: Element
+    prevRecipe: Recipe | null
+  } | null>(null)
   /** 整理桌面请求版本号（每次 +1 触发工作区平铺） */
   const [tidyVersion, setTidyVersion] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -118,18 +125,10 @@ export default function App() {
     }
   }, [])
 
-  // ---- 合成 ----
-  const handleCraft = useCallback(
+  // ---- 合成（实际执行） ----
+  const executeCraft = useCallback(
     async (elementA: Element, elementB: Element) => {
       if (isCrafting) return
-      // 赤化点化：不直接合成，先弹说服框
-      const relicId = elementA.relicId ?? elementB.relicId
-      if (relicId === 'rubedo') {
-        const relic = elementA.relicId ? elementA : elementB
-        const elem = elementA.relicId ? elementB : elementA
-        setPendingTransmute({ relic, element: elem })
-        return
-      }
       // 记录合成中的元素（显示在贤者之石界面），并重置流式输出
       setCraftInputs([
         { name: elementA.name, svg: elementA.svg },
@@ -195,6 +194,41 @@ export default function App() {
     },
     [craft, isCrafting, aiConfig, pushToast],
   )
+
+  // ---- 合成入口：秘宝参与时先二次确认 ----
+  const handleCraft = useCallback(
+    (elementA: Element, elementB: Element) => {
+      if (isCrafting) return
+      const relicId = elementA.relicId ?? elementB.relicId
+      if (!relicId) {
+        executeCraft(elementA, elementB)
+        return
+      }
+      const relic = elementA.relicId ? elementA : elementB
+      const elem = elementA.relicId ? elementB : elementA
+      // 是否已保存过该组合的配方（命中则展示配方警告）
+      const prevRecipe =
+        recipes.find(
+          (r) =>
+            (r.inputA === relic.id && r.inputB === elem.id) ||
+            (r.inputA === elem.id && r.inputB === relic.id),
+        ) ?? null
+      setPendingRelicConfirm({ relic, element: elem, prevRecipe })
+    },
+    [isCrafting, executeCraft, recipes],
+  )
+
+  // ---- 秘宝使用确认 ----
+  const confirmRelicUse = useCallback(() => {
+    if (!pendingRelicConfirm) return
+    const { relic, element } = pendingRelicConfirm
+    setPendingRelicConfirm(null)
+    if (relic.relicId === 'rubedo') {
+      setPendingTransmute({ relic, element })
+      return
+    }
+    executeCraft(relic, element)
+  }, [pendingRelicConfirm, executeCraft])
 
   // ---- 删除（需二次确认） ----
   const handleDelete = useCallback(
@@ -652,6 +686,18 @@ export default function App() {
           pushToast('世界已重置为初始状态，AI 配置保留', undefined, 'success')
         }}
       />
+
+      {/* 秘宝使用二次确认（消耗 + 重复使用警告） */}
+      {pendingRelicConfirm && (
+        <RelicConfirmModal
+          relic={pendingRelicConfirm.relic}
+          element={pendingRelicConfirm.element}
+          prevRecipe={pendingRelicConfirm.prevRecipe}
+          elements={[...unlockedElements, ...RELIC_TEMPLATES]}
+          onConfirm={confirmRelicUse}
+          onClose={() => setPendingRelicConfirm(null)}
+        />
+      )}
 
       {/* 赤化点化：说服弹窗 */}
       {pendingTransmute && (
