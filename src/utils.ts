@@ -36,3 +36,53 @@ export function sanitizeSVG(svgContent: string): string {
 export function isSafeSVG(svg: string): boolean {
   return !/<script|on\w+\s*=|javascript:/i.test(svg)
 }
+
+/** 从元素徽章 SVG 提取背景色相（0~360），用于整理桌面时按色相排序 */
+export function getBadgeHue(svgContent: string): number {
+  const hexToHue = (hex: string): number | null => {
+    const m = hex.replace('#', '')
+    if (m.length === 3) {
+      return hexToHue(`#${m[0]}${m[0]}${m[1]}${m[1]}${m[2]}${m[2]}`)
+    }
+    const n = parseInt(m.slice(0, 6), 16)
+    if (!Number.isFinite(n)) return null
+    const r = (n >> 16) & 255
+    const g = (n >> 8) & 255
+    const b = n & 255
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const d = max - min
+    if (d === 0) return 0
+    let h = 0
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+    return (((h * 60) % 360) + 360) % 360
+  }
+
+  // 优先取「plate」线性渐变（徽章底板）的起始色
+  const gradRe = /<linearGradient[^>]*>([\s\S]*?)<\/linearGradient>/g
+  const stops: Array<{ id: string; colors: string[] }> = []
+  let grad: RegExpExecArray | null
+  while ((grad = gradRe.exec(svgContent)) !== null) {
+    const block = grad[0]
+    const idMatch = /id="([^"]+)"/.exec(block)
+    const colors = [...block.matchAll(/stop-color="?(#[0-9a-fA-F]{3,6})"?/g)].map((mm) => mm[1])
+    if (colors.length > 0) stops.push({ id: idMatch?.[1] ?? '', colors })
+  }
+  const plate = stops.find((s) => /plate/i.test(s.id))
+  const target = plate ?? stops[0]
+  if (target) {
+    for (const c of target.colors) {
+      const h = hexToHue(c)
+      if (h !== null) return h
+    }
+  }
+  // 兜底：取整个 SVG 中第一个十六进制颜色
+  const any = /#([0-9a-fA-F]{6})/.exec(svgContent)
+  if (any) {
+    const h = hexToHue(any[0])
+    if (h !== null) return h
+  }
+  return 0
+}

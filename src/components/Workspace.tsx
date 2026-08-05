@@ -11,7 +11,7 @@ import {
 import type { DragEndEvent, DragMoveEvent, DragOverEvent, DragStartEvent, Modifier } from '@dnd-kit/core'
 import type { CardPosition, Element } from '../types'
 import { INITIAL_ELEMENTS } from '../constants'
-import { uuid } from '../utils'
+import { getBadgeHue, uuid } from '../utils'
 import { ElementCard } from './ElementCard'
 
 interface WorkspaceProps {
@@ -276,10 +276,14 @@ export function Workspace({
         key: string
         size: Size
       }
-      const items: TidyItem[] = elements.map((el, i) => {
-        const key = uidKey(el, i)
-        return { key, size: getCardSize(key) }
-      })
+      // 按徽章背景色相排序后平铺
+      const items: TidyItem[] = elements
+        .map((el, i) => ({ el, i }))
+        .sort((a, b) => getBadgeHue(a.el.svg) - getBadgeHue(b.el.svg))
+        .map(({ el, i }) => {
+          const key = uidKey(el, i)
+          return { key, size: getCardSize(key) }
+        })
       if (items.length === 0) return prev
 
       // 逐行分组：超出右边界则换行
