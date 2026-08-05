@@ -155,7 +155,8 @@ export async function streamChatCompletion(
           delta?: {
             content?: string | null
             /** 推理模型的思考内容（如 DeepSeek reasoning_content） */
-            reasoning_content?: string | null
+            reasoning_content?: string | null,
+            reasoning?: string | null,
             tool_calls?: Array<{
               index?: number
               id?: string
@@ -189,8 +190,12 @@ export async function streamChatCompletion(
       }
 
       // 累积推理内容（思考过程，单独回调用于 UI 展示）
-      if (delta.reasoning_content) {
-        onReasoning?.(delta.reasoning_content)
+      let fields = ['reasoning_content', 'reasoning'] as const
+      for (const field of fields) {
+        const reasoning = delta[field]
+        if (reasoning) {
+          onReasoning?.(reasoning)
+        }
       }
 
       // 累积工具调用分片（index -> 拼接 name/arguments）
