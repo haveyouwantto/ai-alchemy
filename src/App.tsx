@@ -302,6 +302,7 @@ export default function App() {
         aiConfig,
         setCraftMessage,
         (text) => setStreamText((prev) => prev + text),
+        (text) => setStreamText((prev) => prev + text),
       )
       if (outcome.type === 'refused') {
         setCraftInputs([])

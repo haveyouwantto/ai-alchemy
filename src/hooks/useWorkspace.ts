@@ -1033,6 +1033,7 @@ export function useWorkspace() {
       aiConfig: AIConfig | null,
       onMessage: (msg: string) => void,
       onStream?: (text: string) => void,
+      onReasoning?: (text: string) => void,
     ): Promise<CraftOutcome> => {
       if (!relic.relicId) return { type: 'error', message: '这不是秘宝' }
       if (element.relicId) return { type: 'error', message: '秘宝只能与元素结合' }
@@ -1044,7 +1045,7 @@ export function useWorkspace() {
         aiConfig,
         onMessage,
         onStream,
-        undefined,
+        onReasoning,
         TRANSMUTE_SYSTEM_PROMPT,
         text,
       )
