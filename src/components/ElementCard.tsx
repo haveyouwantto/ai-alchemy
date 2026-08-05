@@ -22,7 +22,7 @@ interface ElementCardProps {
   /** 点击回调（选中） */
   onClick?: () => void
   /** 双击回调（复制） */
-  onDoubleClick?: () => void
+  onDoubleClick?: (e: React.MouseEvent) => void
   /** 自定义样式 */
   style?: CSSProperties
   /** 额外类名 */
