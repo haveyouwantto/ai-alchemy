@@ -48,6 +48,15 @@ body {
   width: 72px;
 }
 
+/* 毛玻璃仅限桌面：触屏/移动端禁用 backdrop-filter，
+   iOS Safari 在大量 backdrop-filter 图层下切后台再回来会冻结页面 */
+@media (hover: hover) and (pointer: fine) {
+  .element-card {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+}
+
 /* 小屏（<640px）：卡片尺寸更小，宽度同步收窄 */
 @media (max-width: 639px) {
   .element-card {

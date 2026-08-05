@@ -234,9 +234,17 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     if (!el) return
     const update = () => setSize({ width: el.clientWidth, height: el.clientHeight })
     update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
+    // ResizeObserver 缺失（旧浏览器/内置 WebView）时退回 window resize 监听
+    let ro: ResizeObserver | undefined
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(update)
+      ro.observe(el)
+    }
+    window.addEventListener('resize', update)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', update)
+    }
   }, [open])
 
   // 图数据：节点 = 已解锁元素；连线 = 配方输入 → 输出（只画参与方向）；默认展示按重要性加权最大生成树

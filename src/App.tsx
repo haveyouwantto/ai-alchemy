@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AIConfig, Element, Recipe } from './types'
 import { ACHIEVEMENTS, RELIC_PROMPTS, RELIC_TEMPLATES } from './constants'
 import { useWorkspace } from './hooks/useWorkspace'
@@ -8,10 +8,9 @@ import { ElementCodex } from './components/ElementCodex'
 import { RelicCodex } from './components/RelicCodex'
 import { TransmuteModal } from './components/TransmuteModal'
 import { RelicConfirmModal } from './components/RelicConfirmModal'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Tutorial } from './components/Tutorial'
 
-// 世界地图依赖较大的力导向渲染库，懒加载避免拖慢首屏
-const WorldMap = lazy(() => import('./components/WorldMap').then((m) => ({ default: m.WorldMap })))
 import { HistoryPanel } from './components/HistoryPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { CraftingOverlay } from './components/CraftingOverlay'
@@ -93,6 +92,14 @@ export default function App() {
     element: Element
     prevRecipe: Recipe | null
   } | null>(null)
+  /** 地图加载失败后的重试次数（作为错误边界 key，重置子树） */
+  const [mapRetry, setMapRetry] = useState(0)
+  // 世界地图依赖较大的力导向渲染库，懒加载避免拖慢首屏；
+  // 用重试次数重建 lazy 组件，加载失败后「重试」能真正重新请求 chunk
+  const WorldMap = useMemo(
+    () => lazy(() => import('./components/WorldMap').then((m) => ({ default: m.WorldMap }))),
+    [mapRetry],
+  )
   /** 整理桌面请求版本号（每次 +1 触发工作区平铺） */
   const [tidyVersion, setTidyVersion] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -451,6 +458,33 @@ export default function App() {
   }, [selectedIndex, handleDelete])
 
   // 快捷按钮容器：上大图标 + 下小字，数字徽章为右上角小黄点
+  // Android 系统 WebView 兼容：切后台再回来有时只重绘 CSS 背景、DOM 图层丢失（只剩桌布），
+  // 前台时强制整页重排重绘并触发 resize，让内容重新上屏
+  useEffect(() => {
+    const forceRepaint = () => {
+      const root = document.getElementById('root')
+      if (!root) return
+      root.style.display = 'none'
+      // 强制同步 reflow，确保浏览器重新合成整页
+      void root.offsetHeight
+      root.style.display = ''
+      window.dispatchEvent(new Event('resize'))
+    }
+    const onVisibility = () => {
+      if (!document.hidden) forceRepaint()
+    }
+    const onPageShow = (e: PageTransitionEvent) => {
+      // bfcache/页面恢复时同样强制重绘
+      if (e.persisted) forceRepaint()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pageshow', onPageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [])
+
   const ToolButton = ({
     onClick,
     disabled,
@@ -663,16 +697,67 @@ export default function App() {
         onClose={() => setShowAchievements(false)}
       />
       {showMap && (
-        <Suspense fallback={null}>
-          <WorldMap
-            elements={unlockedElements}
-            recipes={recipes}
-            categories={categories}
-            onAdd={handleAddFromCodex}
-            open
-            onClose={() => setShowMap(false)}
-          />
-        </Suspense>
+        <ErrorBoundary
+          key={mapRetry}
+          fallback={
+            <div className="fixed inset-0 z-40 flex items-center justify-center p-6">
+              <div className="flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-amber-700/40 bg-[#8b5a2b] p-6 text-center shadow-2xl">
+                <span className="text-4xl">🗺️</span>
+                <p className="font-serif text-lg font-bold text-amber-100">世界地图未能展开</p>
+                <p className="text-xs leading-relaxed text-amber-200/70">
+                  地图加载失败，可能是网络波动或浏览器兼容问题。
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setMapRetry((v) => v + 1)}
+                    className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1.5 text-sm font-bold text-amber-950 transition-all hover:brightness-110 active:scale-95"
+                  >
+                    重试
+                  </button>
+                  <button
+                    onClick={() => setShowMap(false)}
+                    className="rounded-xl border border-amber-800/40 bg-amber-100 px-4 py-1.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-200"
+                  >
+                    关闭
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <Suspense
+            fallback={
+              <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowMap(false)} />
+                <div className="relative z-10 flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-amber-700/40 bg-[#8b5a2b] shadow-2xl">
+                  <div className="flex items-center justify-between border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
+                    <h2 className="font-serif text-xl font-bold tracking-widest">🗺️ 世界地图 · 元素关系网</h2>
+                    <button
+                      onClick={() => setShowMap(false)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
+                      aria-label="关闭"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-[#f5e6c8] text-amber-800">
+                    <span className="animate-pulse text-5xl">🗺️</span>
+                    <p className="font-serif font-bold">正在展开世界地图...</p>
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            <WorldMap
+              elements={unlockedElements}
+              recipes={recipes}
+              categories={categories}
+              onAdd={handleAddFromCodex}
+              open
+              onClose={() => setShowMap(false)}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
       <SettingsModal
         open={showSettings}
