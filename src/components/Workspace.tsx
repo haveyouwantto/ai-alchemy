@@ -135,6 +135,8 @@ export function Workspace({
   /** 最新位置快照（供拖拽 modifier 同步读取，避免依赖 dnd-kit 的 rect 测量时序） */
   const positionsRef = useRef(positions)
   positionsRef.current = positions
+  /** 已应用过的整理请求版本号：仅响应新一次的点击，防止随元素变化自动重排 */
+  const appliedTidyVersion = useRef(0)
 
   // 响应式卡片尺寸（移动端更小）
   const [cardSize, setCardSize] = useState(() =>
@@ -228,7 +230,9 @@ export function Workspace({
 
   /** 整理桌面：把所有卡片平铺为整齐网格（按真实尺寸逐行居中摆放） */
   useEffect(() => {
-    if (tidyVersion <= 0) return
+    // 只在「整理」按钮显式点击（版本号变化）时执行一次；元素增删不会触发自动重排
+    if (tidyVersion <= 0 || tidyVersion === appliedTidyVersion.current) return
+    appliedTidyVersion.current = tidyVersion
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect) return
     onPositionsChange((prev) => {
