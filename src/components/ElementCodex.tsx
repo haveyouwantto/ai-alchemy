@@ -234,6 +234,7 @@ export function ElementDetailModal({
 
 export function ElementCodex({ elements, recipes, categories, open, onClose, onAdd }: ElementCodexProps) {
   const [search, setSearch] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [sortMode, setSortMode] = useState<'time' | 'name'>('time')
   const [detailElement, setDetailElement] = useState<Element | null>(null)
@@ -271,29 +272,41 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-amber-700/40 bg-[#8b5a2b] shadow-2xl">
+      <div className="relative z-10 flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-amber-700/40 bg-[#8b5a2b] shadow-2xl">
         {/* 书封头 */}
         <div className="flex items-center justify-between border-b-2 border-amber-900/30 bg-gradient-to-r from-[#7a4a20] to-[#96602e] px-4 py-3 text-amber-100">
           <h2 className="font-serif text-xl font-bold tracking-widest">📖 元素图鉴 · 天地之书</h2>
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索元素..."
-              className="w-32 rounded-lg border border-amber-700/40 bg-[#fdf6e3] px-3 py-1.5 text-sm text-amber-950 placeholder-amber-700/50 outline-none focus:border-amber-500 sm:w-40"
-            />
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded-lg border border-amber-700/40 bg-[#fdf6e3] px-2 py-1.5 text-sm text-amber-950 outline-none focus:border-amber-500"
-            >
-              <option value="all">全部类别</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            {/* 搜索：默认只显示放大镜，点击后展开输入框 */}
+            {searchOpen ? (
+              <>
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="搜索元素..."
+                  className="w-32 rounded-lg border border-amber-700/40 bg-[#fdf6e3] px-3 py-1.5 text-sm text-amber-950 placeholder-amber-700/50 outline-none focus:border-amber-500 sm:w-40"
+                />
+                <button
+                  onClick={() => {
+                    setSearch('')
+                    setSearchOpen(false)
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
+                  title="关闭搜索"
+                >
+                  ✕
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-900/50 text-amber-100 transition-colors hover:bg-amber-900/80"
+                title="搜索元素"
+              >
+                🔍
+              </button>
+            )}
             <div className="flex overflow-hidden rounded-lg border border-amber-700/40 bg-[#fdf6e3]">
               <button
                 onClick={() => setSortMode('time')}
@@ -372,49 +385,57 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
               <p>图鉴中尚无此条目</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid grid-cols-4 gap-1 sm:grid-cols-3 sm:gap-2 md:grid-cols-4 lg:grid-cols-5">
               {filtered.map((el) => (
                 <div
                   key={el.id}
-                  className="flex items-center gap-2 rounded-lg border border-amber-800/30 bg-[#fdf6e3] p-1 shadow-sm transition-colors hover:border-amber-600 hover:shadow-md"
+                  className="flex flex-col items-center gap-1 rounded-lg border border-amber-800/30 bg-[#fdf6e3] p-1 shadow-sm transition-colors hover:border-amber-600 hover:shadow-md sm:flex-row sm:items-center sm:gap-2 sm:p-1.5"
                 >
-                  {/* 图标（点击查看详情） */}
+                  {/* 图标：窄屏=添加到桌面；宽屏=查看详情 */}
                   <button
-                    onClick={() => setDetailElement(el)}
+                    onClick={() =>
+                      window.matchMedia('(max-width: 639px)').matches ? onAdd(el) : setDetailElement(el)
+                    }
                     className="shrink-0 rounded-md transition-transform hover:scale-105"
-                    title={`查看 ${el.name} 详情`}
+                    title={
+                      window.matchMedia('(max-width: 639px)').matches
+                        ? `添加「${el.name}」到桌面`
+                        : `查看 ${el.name} 详情`
+                    }
                   >
-                    <span className="flex h-20 w-20 items-center justify-center rounded-md bg-amber-100/70">
+                    <span className="flex h-16 w-16 items-center justify-center rounded-md bg-amber-100/70 sm:hidden">
+                      <CodexIcon svg={el.svg} size={56} />
+                    </span>
+                    <span className="hidden h-20 w-20 items-center justify-center rounded-md bg-amber-100/70 sm:flex">
                       <CodexIcon svg={el.svg} size={72} />
                     </span>
                   </button>
-                  {/* 名称 + ID */}
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  {/* 名称（点击进入详情）+ ID + 左右按钮（仅宽屏） */}
+                  <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5 sm:items-start">
                     <button
                       onClick={() => setDetailElement(el)}
-                      className="line-clamp-2 break-words text-left text-sm font-semibold leading-tight text-amber-950 hover:text-amber-700"
+                      className="line-clamp-2 break-words text-center text-sm font-semibold leading-tight text-amber-950 hover:text-amber-700 sm:text-left"
                       title={`查看 ${el.name} 详情`}
                     >
                       {el.name}
                     </button>
                     <span className="truncate font-mono text-[10px] text-amber-700/70">{el.id}</span>
-                  </div>
-                  {/* 操作按钮（卡片右侧，放大便于点击）：i 详情 / + 添加到桌面 */}
-                  <div className="flex shrink-0 flex-col gap-1.5">
-                    <button
-                      onClick={() => onAdd(el)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-amber-700/50 bg-amber-100 text-lg font-bold text-amber-900 transition-colors hover:bg-amber-300 active:scale-95"
-                      title="添加到桌面"
-                    >
-                      +
-                    </button>
-                    <button
-                      onClick={() => setDetailElement(el)}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-amber-700/50 bg-amber-100 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-300 active:scale-95"
-                      title="查看详情"
-                    >
-                      i
-                    </button>
+                    <div className="hidden items-center gap-1.5 sm:flex">
+                      <button
+                        onClick={() => onAdd(el)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-amber-700/50 bg-amber-100 text-base font-bold text-amber-900 transition-colors hover:bg-amber-300 active:scale-95"
+                        title="添加到桌面"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => setDetailElement(el)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-amber-700/50 bg-amber-100 text-xs font-bold text-amber-900 transition-colors hover:bg-amber-300 active:scale-95"
+                        title="查看详情"
+                      >
+                        i
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
