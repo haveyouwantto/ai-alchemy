@@ -255,7 +255,10 @@ export function Workspace({
     onPositionsChange((prev) => {
       const cw = rect.width
       const ch = rect.height
-      const gap = 18
+      // 小屏更紧凑：更小的边距与间距
+      const isSmall = window.innerWidth < 640
+      const gap = isSmall ? 10 : 18
+      const pad = isSmall ? 12 : PADDING
       interface TidyItem {
         key: string
         size: Size
@@ -269,12 +272,12 @@ export function Workspace({
       // 逐行分组：超出右边界则换行
       const rows: TidyItem[][] = []
       let curRow: TidyItem[] = []
-      let cursor = PADDING
+      let cursor = pad
       for (const it of items) {
-        if (curRow.length > 0 && cursor + it.size.w + gap > cw - PADDING) {
+        if (curRow.length > 0 && cursor + it.size.w + gap > cw - pad) {
           rows.push(curRow)
           curRow = []
-          cursor = PADDING
+          cursor = pad
         }
         curRow.push(it)
         cursor += it.size.w + gap
@@ -283,13 +286,13 @@ export function Workspace({
 
       // 逐行居中，并保证不超出容器下边界
       const next = { ...prev }
-      let y = PADDING
+      let y = pad
       for (const row of rows) {
         const totalW = row.reduce((sum, it) => sum + it.size.w, 0) + gap * (row.length - 1)
-        let x = Math.max(PADDING, (cw - totalW) / 2)
+        let x = Math.max(pad, (cw - totalW) / 2)
         const rowMaxH = Math.max(...row.map((it) => it.size.h))
         for (const it of row) {
-          const maxY = Math.max(PADDING, ch - it.size.h - PADDING)
+          const maxY = Math.max(pad, ch - it.size.h - pad)
           next[it.key] = { x: Math.round(x), y: Math.round(Math.min(y, maxY)) }
           x += it.size.w + gap
         }
