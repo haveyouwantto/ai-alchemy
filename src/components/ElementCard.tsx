@@ -58,8 +58,9 @@ function ElementCardInner({
       {...(listeners ?? {})}
       className={[
         'relative flex flex-col items-center justify-center rounded-2xl border-2 transition-all duration-150',
-        'bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 shadow-lg shadow-black/50',
-        'ring-1 ring-inset ring-amber-900/30',
+        // 毛玻璃：半透明暖色 + 背景模糊，透出木桌纹理
+        'border-amber-800/40 bg-amber-100/[0.07] shadow-lg shadow-black/40 backdrop-blur-md',
+        'ring-1 ring-inset ring-amber-200/10',
         selected
           ? 'border-amber-400 ring-2 ring-amber-400/50'
           : 'border-amber-900/60',

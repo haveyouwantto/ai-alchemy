@@ -45,7 +45,7 @@ export function CraftingOverlay({ show, message, inputs = [], streamText = '' }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3">
-      <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border-2 border-amber-800/50 bg-gradient-to-b from-stone-900 to-stone-950 p-5 shadow-[0_0_40px_rgba(255,176,32,0.15)] sm:max-w-md">
+      <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border-2 border-amber-800/50 bg-gradient-to-b from-[#3a2512] to-[#241608] p-5 shadow-[0_0_40px_rgba(255,176,32,0.15)] sm:max-w-md">
         {/* 贤者之石 + 正在合成的元素 inline 展示 */}
         <div className="flex w-full items-center justify-center gap-3">
           <div className="relative flex h-16 w-16 shrink-0 items-center justify-center">
@@ -83,7 +83,7 @@ export function CraftingOverlay({ show, message, inputs = [], streamText = '' }:
         <p className="text-center font-medium text-amber-200">{message || '贤者之石充能中...'}</p>
 
         {/* 进度条 */}
-        <div className="h-2 w-full overflow-hidden rounded-full border border-amber-900/50 bg-stone-950">
+        <div className="h-2 w-full overflow-hidden rounded-full border border-amber-900/50 bg-[#1d1007]">
           <div className="h-full w-1/3 animate-[slide_1s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-amber-400 to-orange-500" />
         </div>
 
@@ -97,7 +97,7 @@ export function CraftingOverlay({ show, message, inputs = [], streamText = '' }:
             readOnly
             value={streamText}
             placeholder="AI 正在思考合成方案..."
-            className="alchemy-scroll h-40 w-full resize-none rounded-xl border border-amber-900/50 bg-stone-950/80 p-3 text-sm leading-relaxed text-amber-100 placeholder-amber-200/40 outline-none focus:border-amber-400/60"
+            className="alchemy-scroll h-40 w-full resize-none rounded-xl border border-amber-900/50 bg-[#1d1007]/80 p-3 text-sm leading-relaxed text-amber-100 placeholder-amber-200/40 outline-none focus:border-amber-400/60"
           />
         </div>
 

@@ -477,8 +477,8 @@ export function Workspace({
             isOverTrash
               ? 'scale-110 border-red-400 bg-red-900/80 shadow-lg shadow-red-500/30'
               : isDraggingAny
-                ? 'border-amber-400/60 bg-stone-800/90'
-                : 'border-amber-900/50 bg-stone-900/80'
+                ? 'border-amber-400/60 bg-[#4a2e16]/90'
+                : 'border-amber-900/50 bg-[#2b1a0d]/80'
           }`}
           title="拖拽元素到垃圾桶删除"
         >

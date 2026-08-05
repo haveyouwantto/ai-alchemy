@@ -299,7 +299,7 @@ export default function App() {
           ? 'cursor-not-allowed opacity-40'
           : active
             ? 'border border-amber-400 bg-gradient-to-b from-amber-400 to-amber-500 font-bold text-amber-950 shadow-[0_0_14px_rgba(251,191,36,0.45)]'
-            : 'border border-amber-900/50 bg-stone-800/70 text-amber-100 hover:border-amber-700/70 hover:bg-stone-700/80 hover:text-amber-50',
+            : 'border border-amber-800/50 bg-[#4a2e16]/80 text-amber-100 hover:border-amber-600/70 hover:bg-[#5d3a1c]/80 hover:text-amber-50',
       ].join(' ')}
     >
       {children}
@@ -307,9 +307,9 @@ export default function App() {
   )
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#160e08] text-amber-100">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#241508] text-amber-100">
       {/* 顶部状态栏 */}
-      <div className="border-b-2 border-amber-900/40 bg-gradient-to-r from-stone-950 via-stone-900 to-stone-950 shadow-[0_1px_0_rgba(255,200,100,0.08)]">
+      <div className="border-b-2 border-amber-900/40 bg-gradient-to-r from-[#3a2512] via-[#4a2e16] to-[#2b1a0d] shadow-[0_1px_0_rgba(255,200,100,0.12)]">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
           <h1 className="mr-auto flex items-center gap-2 font-serif text-base font-bold tracking-wide text-amber-300 sm:text-lg">
             <span className="text-2xl">⚗️</span>
@@ -375,7 +375,7 @@ export default function App() {
       />
 
       {/* 底部提示条 */}
-      <div className="border-t-2 border-amber-900/40 bg-gradient-to-r from-stone-950 via-stone-900 to-stone-950 px-3 py-1.5 text-center text-xs text-amber-200/70">
+      <div className="border-t-2 border-amber-900/40 bg-gradient-to-r from-[#3a2512] via-[#4a2e16] to-[#2b1a0d] px-3 py-1.5 text-center text-xs text-amber-200/70">
         <span className="hidden sm:inline">拖拽卡片到另一张上合成 · 拖到空白可移动 · 双击复制 · Ctrl+K 图鉴 · 选中后 Delete 删除</span>
         <span className="sm:hidden">拖拽卡片合成或移动 · 长按拖拽</span>
       </div>

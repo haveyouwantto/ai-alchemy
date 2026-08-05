@@ -40,7 +40,7 @@ function ToastItem({ toast }: { toast: ToastData }) {
   return (
     <div
       style={style}
-      className="pointer-events-none relative w-72 overflow-hidden rounded-2xl border-2 border-amber-800/50 bg-gradient-to-b from-stone-900/95 to-stone-950/95 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)]"
+      className="pointer-events-none relative w-72 overflow-hidden rounded-2xl border-2 border-amber-800/50 bg-gradient-to-b from-[#3a2512]/95 to-[#241608]/95 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)]"
     >
       <div className="flex items-start gap-3">
         <span className="text-2xl">{isSuccess ? '✨' : '⚠️'}</span>
