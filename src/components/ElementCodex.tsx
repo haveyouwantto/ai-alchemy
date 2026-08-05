@@ -365,48 +365,55 @@ export function ElementCodex({ elements, recipes, categories, open, onClose, onA
         </div>
 
         {/* 书页内容：网格元素图标 tiles（i / + 按钮） */}
-        <div className="alchemy-scroll flex-1 overflow-y-auto bg-[#f5e6c8] p-4">
+        <div className="alchemy-scroll flex-1 overflow-y-auto bg-[#f5e6c8] p-3">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center text-amber-800">
               <span className="text-5xl">📜</span>
               <p>图鉴中尚无此条目</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {filtered.map((el) => (
                 <div
                   key={el.id}
-                  className="rounded-lg border border-amber-800/30 bg-[#fdf6e3] p-2 shadow-sm transition-colors hover:border-amber-600 hover:shadow-md"
+                  className="flex items-center gap-2 rounded-lg border border-amber-800/30 bg-[#fdf6e3] p-1 shadow-sm transition-colors hover:border-amber-600 hover:shadow-md"
                 >
                   {/* 图标（点击查看详情） */}
                   <button
                     onClick={() => setDetailElement(el)}
-                    className="flex w-full flex-col items-center gap-1"
+                    className="shrink-0 rounded-md transition-transform hover:scale-105"
                     title={`查看 ${el.name} 详情`}
                   >
-                    <span className="flex h-16 w-16 items-center justify-center rounded-md bg-amber-100/70">
-                      <CodexIcon svg={el.svg} size={44} />
+                    <span className="flex h-20 w-20 items-center justify-center rounded-md bg-amber-100/70">
+                      <CodexIcon svg={el.svg} size={72} />
                     </span>
-                    <span className="w-full truncate text-center text-xs font-semibold text-amber-950">
-                      {el.name}
-                    </span>
-                    <span className="w-full truncate font-mono text-[9px] text-amber-700/70">{el.id}</span>
                   </button>
-                  {/* 操作按钮：i 详情 / + 添加到桌面 */}
-                  <div className="mt-1 flex items-center justify-center gap-1.5">
+                  {/* 名称 + ID */}
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <button
                       onClick={() => setDetailElement(el)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full border border-amber-700/50 bg-amber-100 text-xs font-bold text-amber-900 transition-colors hover:bg-amber-300"
-                      title="查看详情"
+                      className="line-clamp-2 break-words text-left text-sm font-semibold leading-tight text-amber-950 hover:text-amber-700"
+                      title={`查看 ${el.name} 详情`}
                     >
-                      i
+                      {el.name}
                     </button>
+                    <span className="truncate font-mono text-[10px] text-amber-700/70">{el.id}</span>
+                  </div>
+                  {/* 操作按钮（卡片右侧，放大便于点击）：i 详情 / + 添加到桌面 */}
+                  <div className="flex shrink-0 flex-col gap-1.5">
                     <button
                       onClick={() => onAdd(el)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full border border-amber-700/50 bg-amber-100 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-300"
+                      className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-amber-700/50 bg-amber-100 text-lg font-bold text-amber-900 transition-colors hover:bg-amber-300 active:scale-95"
                       title="添加到桌面"
                     >
                       +
+                    </button>
+                    <button
+                      onClick={() => setDetailElement(el)}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-amber-700/50 bg-amber-100 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-300 active:scale-95"
+                      title="查看详情"
+                    >
+                      i
                     </button>
                   </div>
                 </div>

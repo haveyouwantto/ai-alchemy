@@ -157,14 +157,14 @@ export function Workspace({
 
   // 响应式卡片尺寸（移动端更小）
   const [cardSize, setCardSize] = useState(() =>
-    typeof window === 'undefined' ? 96 : window.innerWidth < 640 ? 60 : window.innerWidth < 1024 ? 88 : 104,
+    typeof window === 'undefined' ? 96 : window.innerWidth < 640 ? 68 : window.innerWidth < 1024 ? 88 : 104,
   )
   const cardSizeRef = useRef(cardSize)
   cardSizeRef.current = cardSize
   useEffect(() => {
     const onResize = () => {
       const w = window.innerWidth
-      setCardSize(w < 640 ? 60 : w < 1024 ? 88 : 104)
+      setCardSize(w < 640 ? 68 : w < 1024 ? 88 : 104)
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
