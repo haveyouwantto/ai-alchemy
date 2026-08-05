@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AIConfig, Element } from './types'
-import { RELIC_TEMPLATES } from './constants'
+import { RELIC_PROMPTS, RELIC_TEMPLATES } from './constants'
 import { useWorkspace } from './hooks/useWorkspace'
 import { Workspace } from './components/Workspace'
 import { ElementCodex } from './components/ElementCodex'
@@ -25,7 +25,6 @@ export default function App() {
     relics,
     isCrafting,
     craft,
-    decomposeElement,
     exportWorkspace,
     importWorkspace,
     getExportFilename,
@@ -124,6 +123,10 @@ export default function App() {
         setCraftMessage,
         (text) => setStreamText((prev) => prev + text),
         (text) => setStreamText((prev) => prev + text),
+        // 秘宝参与 → 使用该秘宝专属提示词（拆解模式）
+        (elementA.relicId ?? elementB.relicId)
+          ? RELIC_PROMPTS[(elementA.relicId ?? elementB.relicId)!]
+          : undefined,
       )
       if (outcome.type === 'error') {
         setCraftInputs([])
@@ -254,56 +257,6 @@ export default function App() {
       }
     },
     [deployRelic, pushToast],
-  )
-
-  // ---- 秘宝反应（黑化拆解元素） ----
-  const handleDecompose = useCallback(
-    async (relic: Element, element: Element) => {
-      if (isCrafting) return
-      setCraftInputs([
-        { name: relic.name, svg: relic.svg },
-        { name: element.name, svg: element.svg },
-      ])
-      setStreamText('')
-      setCraftMessage(`${relic.name}侵蚀中...`)
-      const flashKeys = new Set<string>()
-      if (relic.instanceUid) flashKeys.add(relic.instanceUid)
-      if (element.instanceUid) flashKeys.add(element.instanceUid)
-      setFlashUids(flashKeys)
-      setTimeout(() => setFlashUids(new Set()), 600)
-
-      const outcome = await decomposeElement(
-        relic,
-        element,
-        aiConfig,
-        setCraftMessage,
-        (text) => setStreamText((prev) => prev + text),
-      )
-      if (outcome.type === 'error') {
-        setCraftInputs([])
-        pushToast(`秘宝失灵：${outcome.message}`, undefined, 'error')
-        return
-      }
-      const outcomeElements = outcome.added.map((e) => ({ name: e.name, svg: e.svg }))
-      pushToast(
-        `🖤 ${relic.name}：${element.name} 分解为 ${outcomeElements.map((e) => e.name).join('、')}`,
-        outcomeElements,
-        'success',
-      )
-      if (outcome.type === 'ai' && outcome.newElements.length > 0) {
-        for (const el of outcome.newElements) {
-          pushToast(
-            `✨ 概念元素「${el.name}」析出`,
-            [{ name: el.name, svg: el.svg }],
-            'success',
-            el.description || undefined,
-            true,
-          )
-        }
-      }
-      setTimeout(() => setCraftInputs([]), 500)
-    },
-    [isCrafting, decomposeElement, aiConfig, pushToast],
   )
 
   // ---- 导入 / 导出 ----
@@ -484,7 +437,6 @@ export default function App() {
         tidyVersion={tidyVersion}
         onSelect={setSelectedIndex}
         onCraft={handleCraft}
-        onDecompose={handleDecompose}
         onDuplicate={handleDuplicate}
         onOpenLibrary={() => setShowCodex(true)}
         onDeleteToTrash={handleDeleteToTrash}
@@ -508,7 +460,7 @@ export default function App() {
       <HistoryPanel
         history={craftHistory}
         recipes={recipes}
-        elements={unlockedElements}
+        elements={[...unlockedElements, ...RELIC_TEMPLATES]}
         open={showHistory}
         onClose={() => setShowHistory(false)}
         onClear={() => {
@@ -519,6 +471,8 @@ export default function App() {
       <RelicCodex
         relics={RELIC_TEMPLATES}
         counts={relics}
+        recipes={recipes}
+        elements={unlockedElements}
         open={showRelics}
         onClose={() => setShowRelics(false)}
         onDeploy={handleDeployRelic}

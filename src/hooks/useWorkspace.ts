@@ -142,6 +142,8 @@ function loadStoredWorkspace(): StoredWorkspace {
         for (const t of RELIC_TEMPLATES) {
           if (!templateMap.has(t.id)) templateMap.set(t.id, t)
         }
+        // 旧秘宝 id 迁移：blackening → nigredo（炼金黑白赤黄命名）
+        const migRelicId = (id: string) => (id === 'blackening' ? 'nigredo' : id)
 
         let elements: Element[]
         const positions: Record<string, CardPosition> = {}
@@ -150,10 +152,16 @@ function loadStoredWorkspace(): StoredWorkspace {
           elements = []
           for (const ref of parsed.elements as StoredElementRef[]) {
             if (!ref || typeof ref.id !== 'string') continue
-            const template = templateMap.get(ref.id)
+            let templateId = ref.id
+            let relicId = ref.relicId
+            if (ref.relicId === 'blackening' || ref.id === 'relic_blackening') {
+              templateId = 'relic_nigredo'
+              relicId = 'nigredo'
+            }
+            const template = templateMap.get(templateId)
             if (!template) continue
             const instanceUid = ref.instanceUid ?? uuid()
-            elements.push({ ...template, instanceUid, ...(ref.relicId ? { relicId: ref.relicId } : {}) })
+            elements.push({ ...template, instanceUid, ...(relicId ? { relicId: migRelicId(relicId) } : {}) })
             if (Number.isFinite(ref.x) && Number.isFinite(ref.y)) {
               positions[instanceUid] = { x: ref.x as number, y: ref.y as number }
             }
@@ -186,21 +194,30 @@ function loadStoredWorkspace(): StoredWorkspace {
               )
             : [],
           positions,
-          // 秘宝库存：仅保留非负整数
+          // 秘宝库存：仅保留非负整数；旧 id blackening 迁移为 nigredo；老存档按已解锁元素数量补发
           relics: (() => {
             const relics: Record<string, number> = {}
-            if (parsed.relics && typeof parsed.relics === 'object') {
-              for (const [key, value] of Object.entries(parsed.relics)) {
+            const hasStored = parsed.relics && typeof parsed.relics === 'object'
+            if (hasStored) {
+              for (const [key, value] of Object.entries(parsed.relics!)) {
                 const n = Number(value)
-                if (Number.isFinite(n) && n >= 0) relics[key] = Math.floor(n)
+                if (Number.isFinite(n) && n >= 0) relics[migRelicId(key)] = Math.floor(n)
               }
             }
-            return Object.keys(relics).length > 0 ? relics : { ...INITIAL_RELIC_COUNTS }
+            if (Object.keys(relics).length === 0) {
+              return {
+                ...INITIAL_RELIC_COUNTS,
+                nigredo:
+                  INITIAL_RELIC_COUNTS.nigredo +
+                  Math.floor(unlockedElements.length / RELIC_REWARD_NEW_ELEMENTS),
+              }
+            }
+            return relics
           })(),
           newElementCount:
             typeof parsed.newElementCount === 'number' && Number.isFinite(parsed.newElementCount)
               ? Math.max(0, Math.floor(parsed.newElementCount))
-              : 0,
+              : unlockedElements.length,
         }
       }
     }
@@ -555,6 +572,12 @@ export function useWorkspace() {
       if (uncategorized.length > 0) {
         elementsByCategory.push(`「未归类」：${uncategorized.join('、')}`)
       }
+      // 秘宝：与元素同格式发给 AI（可被配方/拆解引用）
+      if (RELIC_TEMPLATES.length > 0) {
+        elementsByCategory.push(
+          `「秘宝」：${RELIC_TEMPLATES.map((r) => `${r.name} (ID: ${r.id})`).join('、')}`,
+        )
+      }
       const elementList = elementsByCategory.join('\n')
       const relatedRecipes = stateRef.current.recipes.filter(
         (r) =>
@@ -602,8 +625,11 @@ export function useWorkspace() {
       onMessage: (msg: string) => void,
       onStream?: (text: string) => void,
       onReasoning?: (text: string) => void,
+      /** 传入秘宝专属提示词即为「拆解模式」（秘宝 + 元素 → 概念配方） */
+      decomposePrompt?: string,
     ): Promise<CraftOutcome> => {
       if (isCrafting) return { type: 'error', message: '正在合成中，请稍候' }
+      const isDecompose = !!decomposePrompt
       setIsCrafting(true)
       try {
         // 步骤 1：本地查重
@@ -612,14 +638,28 @@ export function useWorkspace() {
           return executeLocalRecipe(local, inputA, inputB)
         }
 
-        // 步骤 2：AI 生成
+        // 步骤 2：AI 生成（拆解模式用秘宝专属提示词）
         if (!aiConfig || !aiConfig.baseURL.trim() || !aiConfig.apiKey.trim()) {
-          return { type: 'error', message: '尚未配置 AI，无法生成新合成配方' }
+          return { type: 'error', message: isDecompose ? '尚未配置 AI，无法触发秘宝' : '尚未配置 AI，无法生成新合成配方' }
         }
 
-        onMessage('正在解析元素...')
-        const messages = buildMessages(inputA, inputB)
-        onMessage('贤者之石充能中...')
+        const messages: ChatMessage[] = isDecompose
+          ? (() => {
+              const relicInput = inputA.relicId ? inputA : inputB
+              const elemInput = inputA.relicId ? inputB : inputA
+              return [
+                { role: 'system', content: decomposePrompt! },
+                {
+                  role: 'user',
+                  content: `【秘宝】${relicInput.name}（ID: ${relicInput.id}）\n【待拆解元素】${elemInput.name}（ID: ${elemInput.id}，类别：${
+                    stateRef.current.categories.find((c) => c.id === elemInput.categoryId)?.name ?? elemInput.categoryId
+                  }）${elemInput.description ? `：${elemInput.description}` : ''}\n\n请使用「${relicInput.name}」把该元素拆解为 1~3 个组成它的概念元素（可引用已有元素 ID 或创建新元素，产物并列、尽量多拆），并调用 craft_recipe 绑定本次输入与输出。`,
+                },
+              ]
+            })()
+          : buildMessages(inputA, inputB)
+        onMessage(isDecompose ? '秘宝之力涌动中...' : '正在解析元素...')
+        onMessage(isDecompose ? '概念裂解中...' : '贤者之石充能中...')
 
         // 多轮工具调用中累积的状态
         const newElements: Element[] = []
@@ -639,7 +679,7 @@ export function useWorkspace() {
             (text) => {
               craftNote += text
               onStream?.(text)
-              onMessage('贤者之石充能中...')
+              onMessage(isDecompose ? '概念裂解中...' : '贤者之石充能中...')
             },
             (text) => onReasoning?.(text),
           )
@@ -900,21 +940,21 @@ export function useWorkspace() {
           note: finalNote || undefined,
         })
 
-        // 秘宝奖励：每合成出 10 个新元素，奖励 1 个黑化
+        // 秘宝奖励：仅合成模式，每合成出 10 个新元素，奖励 1 个黑化
         let relicReward = 0
-        if (newElements.length > 0) {
+        if (!isDecompose && newElements.length > 0) {
           const prevCount = stateRef.current.newElementCount
           const nextCount = prevCount + newElements.length
           const awarded =
             Math.floor(nextCount / RELIC_REWARD_NEW_ELEMENTS) - Math.floor(prevCount / RELIC_REWARD_NEW_ELEMENTS)
           if (awarded > 0) {
-            setRelics((prev) => ({ ...prev, blackening: (prev.blackening ?? 0) + awarded }))
+            setRelics((prev) => ({ ...prev, nigredo: (prev.nigredo ?? 0) + awarded }))
             relicReward = awarded
           }
           setNewElementCount(nextCount)
         }
 
-        onMessage('凝固新元素...')
+        onMessage(isDecompose ? '概念析出...' : '凝固新元素...')
         return {
           type: 'ai',
           added,
@@ -931,8 +971,7 @@ export function useWorkspace() {
     },
     [isCrafting, findLocalRecipe, executeLocalRecipe, buildMessages, consumeInputs, bumpUseCount, unlockElements, addCraftHistoryEntry],
   )
-
-  /** 黑化秘宝：与元素结合，把该元素拆解为 1~3 个组成它的概念元素（消耗秘宝与元素） */
+  /** 黑化秘宝：与元素结合触发拆解（委托 craft：构建配方、可引用已有元素、保留历史记录） */
   const decomposeElement = useCallback(
     async (
       relic: Element,
@@ -941,208 +980,10 @@ export function useWorkspace() {
       onMessage: (msg: string) => void,
       onStream?: (text: string) => void,
     ): Promise<CraftOutcome> => {
-      if (isCrafting) return { type: 'error', message: '正在合成中，请稍候' }
-      if (!relic.relicId) return { type: 'error', message: '这不是秘宝' }
-      if (element.relicId) return { type: 'error', message: '秘宝只能与元素结合' }
-      if (!aiConfig || !aiConfig.baseURL.trim() || !aiConfig.apiKey.trim()) {
-        return { type: 'error', message: '尚未配置 AI，无法触发黑化' }
-      }
-      setIsCrafting(true)
-      try {
-        onMessage(`${relic.name}侵蚀中...`)
-        const prompt = RELIC_PROMPTS[relic.relicId ?? ''] ?? DECOMPOSE_SYSTEM_PROMPT
-        const messages: ChatMessage[] = [
-          { role: 'system', content: prompt },
-          {
-            role: 'user',
-            content: `【待拆解元素】${element.name}（ID: ${element.id}，类别：${
-              stateRef.current.categories.find((c) => c.id === element.categoryId)?.name ?? element.categoryId
-            }）${element.description ? `：${element.description}` : ''}\n\n请使用「${relic.name}」把它拆解为 1~3 个组成它的概念元素，并调用 craft_elements 创建。`,
-          },
-        ]
-
-        const newElements: Element[] = []
-        const createdCategories: ElementCategory[] = []
-        let note = ''
-        let lastError = ''
-
-        for (let round = 0; round < MAX_AI_ROUNDS; round++) {
-          const result = await streamChatCompletion(aiConfig, messages, [...FUNCTIONS], (text) => {
-            note += text
-            onStream?.(text)
-            onMessage(`${relic.name}侵蚀中...`)
-          })
-          if (!result.ok) return { type: 'error', message: result.error }
-          messages.push(result.message)
-          const toolCalls = result.message.tool_calls ?? []
-          if (toolCalls.length === 0) {
-            if (newElements.length === 0) {
-              return { type: 'error', message: lastError || '模型未产出概念元素，请重试' }
-            }
-            break
-          }
-
-          let toolError: string | null = null
-          for (const tc of toolCalls) {
-            if (toolError) break
-            if (tc.function.name === 'create_category') {
-              const args = parseToolArguments<CreateCategoryArgs>(tc.function.arguments)
-              const draft = args?.category
-              if (!draft || typeof draft !== 'object') {
-                toolError = 'create_category 缺少 category 参数'
-                break
-              }
-              const catId = normalizeId(draft.id)
-              const catName = draft.name?.trim()
-              const catIcon = draft.icon?.trim()
-              const catDesc = draft.description?.trim()
-              if (!catId) toolError = 'create_category 的 id 缺失或非法（需小写字母/数字/下划线）'
-              else if (!catName) toolError = 'create_category 的 name 缺失'
-              else if (!catIcon) toolError = 'create_category 的 icon 缺失'
-              else if (!catDesc) toolError = 'create_category 的 description 缺失'
-              else if (
-                stateRef.current.categories.some((c) => c.id === catId) ||
-                createdCategories.some((c) => c.id === catId)
-              ) {
-                toolError = `create_category 的 id「${catId}」已存在，请换一个`
-              } else {
-                createdCategories.push({
-                  id: catId,
-                  name: catName,
-                  icon: sanitizeSVG(catIcon),
-                  description: catDesc,
-                  createdAt: Date.now(),
-                })
-              }
-              messages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                content: toolError
-                  ? JSON.stringify({ error: toolError })
-                  : JSON.stringify({ ok: true, created_categories: createdCategories.map((c) => c.id) }),
-              })
-            } else if (tc.function.name === 'craft_elements') {
-              const args = parseToolArguments<CraftElementsArgs>(tc.function.arguments)
-              const drafts = args?.new_elements
-              if (!Array.isArray(drafts) || drafts.length === 0) {
-                toolError = 'craft_elements 的 new_elements 缺失或为空'
-                messages.push({
-                  role: 'tool',
-                  tool_call_id: tc.id,
-                  content: JSON.stringify({ error: toolError }),
-                })
-                break
-              }
-              const createdResults: Array<{ name: string; id: string }> = []
-              for (let i = 0; i < drafts.length; i++) {
-                if (toolError) break
-                const draft = drafts[i]
-                const name = draft.name?.trim()
-                const elementId = normalizeId(draft.id)
-                const desc = draft.description?.trim()
-                const svgRaw = draft.svg_content?.trim()
-                const catRaw = draft.category_id?.trim()
-                const existingByName = name
-                  ? stateRef.current.unlockedElements.find((e) => e.name === name)
-                  : undefined
-                const existingById = elementId ? stateRef.current.unlockedElements.find((e) => e.id === elementId) : undefined
-                const existing = existingByName ?? existingById
-                if (existing) {
-                  const catName =
-                    stateRef.current.categories.find((c) => c.id === existing.categoryId)?.name ?? existing.categoryId
-                  toolError =
-                    `new_elements[${i}] 与已有元素重复（id=${existing.id}, name="${existing.name}", ` +
-                    `category="${catName}(id=${existing.categoryId})", description="${existing.description}"）。` +
-                    `请直接引用已有元素 ID「${existing.id}」作为产物，不要重复创建；如需全新元素请换一个不同的 id 和 name`
-                  break
-                }
-                if (!name) toolError = `new_elements[${i}] 的 name 缺失`
-                else if (!elementId) toolError = `new_elements[${i}]（${name}）的 id 缺失或非法（需小写字母/数字/下划线）`
-                else if (!desc) toolError = `new_elements[${i}]（${name}）的 description 缺失`
-                else if (!svgRaw) toolError = `new_elements[${i}]（${name}）的 svg_content 缺失`
-                else if (!catRaw) toolError = `new_elements[${i}]（${name}）的 category_id 缺失，必须引用已有类别或先调用 create_category`
-                else {
-                  const categoryId = normalizeId(catRaw)
-                  const categoryValid =
-                    stateRef.current.categories.some((c) => c.id === categoryId) ||
-                    createdCategories.some((c) => c.id === categoryId)
-                  if (!categoryValid) {
-                    toolError = `new_elements[${i}]（${name}）的 category_id「${categoryId}」不存在，请改用已有类别或先调用 create_category`
-                  } else {
-                    const nameTaken =
-                      stateRef.current.elements.some((e) => e.name === name) ||
-                      newElements.some((e) => e.name === name)
-                    const finalName = nameTaken ? `${name}(异界)` : name
-                    let finalId = elementId
-                    if (
-                      stateRef.current.unlockedElements.some((e) => e.id === finalId) ||
-                      newElements.some((e) => e.id === finalId)
-                    ) {
-                      finalId = `${finalId}_${newElements.length + createdCategories.length + 1}`
-                    }
-                    newElements.push({
-                      id: finalId,
-                      name: finalName,
-                      description: desc,
-                      categoryId,
-                      svg: sanitizeSVG(svgRaw),
-                      createdAt: Date.now(),
-                      useCount: 0,
-                      isForeign: nameTaken,
-                    })
-                    createdResults.push({ name: finalName, id: finalId })
-                  }
-                }
-              }
-              messages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                content: toolError
-                  ? JSON.stringify({ error: toolError })
-                  : JSON.stringify({ created: createdResults }),
-              })
-            } else if (tc.function.name === 'craft_recipe') {
-              toolError = '拆解模式不需要调用 craft_recipe，直接调用 craft_elements 创建概念元素'
-              messages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                content: JSON.stringify({ error: toolError }),
-              })
-            }
-          }
-          if (toolError) lastError = toolError
-          // 已有产出且本轮无错误 → 提前结束
-          if (newElements.length > 0 && !toolError) break
-        }
-
-        if (newElements.length === 0) {
-          return { type: 'error', message: lastError || '黑化失败：未产出概念元素' }
-        }
-
-        // 保存新类别、解锁概念、消耗秘宝与元素、产出实例
-        if (createdCategories.length > 0) {
-          setCategories((prev) => [...prev, ...createdCategories])
-        }
-        unlockElements(newElements)
-        consumeInputs(relic, element)
-        const producedInstances: Element[] = newElements.map((t) => ({ ...t, instanceUid: uuid() }))
-        setElements((prev) => [...prev, ...producedInstances])
-
-        onMessage('概念析出...')
-        return {
-          type: 'ai',
-          added: producedInstances.map((e) => ({ ...e })),
-          known: [],
-          newCount: newElements.length,
-          recipeCount: 0,
-          newElements: newElements.map((e) => ({ ...e })),
-          note: note.trim() || undefined,
-        }
-      } finally {
-        setIsCrafting(false)
-      }
+      const prompt = RELIC_PROMPTS[relic.relicId ?? ''] ?? DECOMPOSE_SYSTEM_PROMPT
+      return craft(relic, element, aiConfig, onMessage, onStream, undefined, prompt)
     },
-    [isCrafting, consumeInputs, unlockElements],
+    [craft],
   )
 
   /** 导出工作区为 ZIP（manifest.json 仅含基础信息，数据拆分独立 JSON 文件；桌面元素只含 id + 位置） */
@@ -1313,12 +1154,14 @@ export function useWorkspace() {
           return { ok: false, message: 'manifest.json 格式不正确或数据文件缺失' }
         }
 
-        // 秘宝库存（v4 存档；旧版本回退初始值）
+        // 秘宝库存（v4 存档；旧版本回退初始值；blackening → nigredo 迁移）
         const importedRelics: Record<string, number> = { ...INITIAL_RELIC_COUNTS }
         if (data.relicsData?.relics && typeof data.relicsData.relics === 'object') {
           for (const [key, value] of Object.entries(data.relicsData.relics)) {
             const n = Number(value)
-            if (Number.isFinite(n) && n >= 0) importedRelics[key] = Math.floor(n)
+            if (Number.isFinite(n) && n >= 0) {
+              importedRelics[key === 'blackening' ? 'nigredo' : key] = Math.floor(n)
+            }
           }
         }
         const importedNewElementCount =
@@ -1374,10 +1217,16 @@ export function useWorkspace() {
           importedElements = []
           for (const ref of data.elements as StoredElementRef[]) {
             if (!ref || typeof ref.id !== 'string') continue
-            const template = templateMap.get(ref.id)
+            let templateId = ref.id
+            let relicId = ref.relicId
+            if (ref.relicId === 'blackening' || ref.id === 'relic_blackening') {
+              templateId = 'relic_nigredo'
+              relicId = 'nigredo'
+            }
+            const template = templateMap.get(templateId)
             if (!template) continue
             const instanceUid = ref.instanceUid ?? uuid()
-            importedElements.push({ ...template, instanceUid, ...(ref.relicId ? { relicId: ref.relicId } : {}) })
+            importedElements.push({ ...template, instanceUid, ...(relicId ? { relicId } : {}) })
             if (Number.isFinite(ref.x) && Number.isFinite(ref.y)) {
               importedPositions[instanceUid] = { x: ref.x as number, y: ref.y as number }
             }
@@ -1417,6 +1266,7 @@ export function useWorkspace() {
         const validIds = new Set([
           ...importedElements.map((e) => e.id),
           ...importedUnlocked.map((e) => e.id),
+          ...RELIC_TEMPLATES.map((r) => r.id),
         ])
         const importedRecipes: Recipe[] = data.recipes
           .filter(

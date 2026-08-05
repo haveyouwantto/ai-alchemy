@@ -27,8 +27,6 @@ interface WorkspaceProps {
   tidyVersion: number
   onSelect: (index: number) => void
   onCraft: (a: Element, b: Element) => void
-  /** 秘宝与元素结合：触发特殊反应（黑化拆解） */
-  onDecompose: (relic: Element, element: Element) => void
   onDuplicate: (element: Element) => void
   onOpenLibrary: () => void
   /** 拖入垃圾桶时删除对应实例 */
@@ -139,7 +137,6 @@ export function Workspace({
   tidyVersion,
   onSelect,
   onCraft,
-  onDecompose,
   onDuplicate,
   onOpenLibrary,
   onDeleteToTrash,
@@ -509,11 +506,9 @@ export function Workspace({
           const aIsRelic = !!aEl.relicId
           const bIsRelic = !!bEl.relicId
           if (aIsRelic || bIsRelic) {
-            // 秘宝 + 秘宝：无反应；秘宝 + 元素：触发特殊反应
+            // 秘宝 + 秘宝：无反应；秘宝 + 元素：触发特殊反应（由 App 识别秘宝并使用其专属提示词）
             if (!(aIsRelic && bIsRelic)) {
-              const relicEl = aIsRelic ? aEl : bEl
-              const elemEl = aIsRelic ? bEl : aEl
-              onDecompose(relicEl, elemEl)
+              onCraft(aEl, bEl)
             }
           } else {
             onCraft(elements[aIndex], elements[bIndex])
@@ -548,7 +543,7 @@ export function Workspace({
       }
       activeStartPos.current = null
     },
-    [elements, onCraft, onDecompose, onSelect, handleDeleteToTrash, positions, getCardSize, onPositionsChange],
+    [elements, onCraft, onSelect, handleDeleteToTrash, positions, getCardSize, onPositionsChange],
   )
 
   const handleDragCancel = useCallback(() => {

@@ -21,37 +21,83 @@ export const INITIAL_WORKSPACE: { elements: Element[]; recipes: Recipe[]; catego
  * 桌面实例以 Element 形式存在（带 relicId 标记），模板用于还原与展示。 */
 export const RELIC_TEMPLATES: Element[] = [
   {
-    id: 'relic_blackening',
+    id: 'relic_nigredo',
     name: '黑化',
     description: '与一个元素融合后，将其拆解为组成它的 1~3 个概念元素。消耗品，用一次少一个。',
     categoryId: 'relics',
     svg: '<svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="relicGlow" cx="50%" cy="42%" r="60%"><stop offset="0%" stop-color="#a855f7" stop-opacity="0.55"/><stop offset="100%" stop-color="#3b0764" stop-opacity="0"/></radialGradient><linearGradient id="relicPlate" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2e1065"/><stop offset="55%" stop-color="#1e1b4b"/><stop offset="100%" stop-color="#0f0a1e"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="url(#relicGlow)"/><circle cx="50" cy="50" r="37" fill="url(#relicPlate)"/><circle cx="50" cy="50" r="37" fill="none" stroke="#c4b5fd" stroke-opacity="0.3" stroke-width="1.5"/><ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.1" transform="rotate(-28 38 33)"/><circle cx="50" cy="51" r="16" fill="#0d0716" stroke="#e9d5ff" stroke-width="2.5"/><path d="M42 44 L46 51 L42 58 L48 62" stroke="#e9d5ff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M54 40 L58 47 L52 53 L56 59" stroke="#d8b4fe" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     createdAt: 0,
     useCount: 0,
-    relicId: 'blackening',
+    relicId: 'nigredo',
   },
 ]
 
 /** 秘宝初始库存 */
 export const INITIAL_RELIC_COUNTS: Record<string, number> = {
-  blackening: 5,
+  nigredo: 5,
 }
 
 /** 每合成出多少个新元素，奖励 1 个「黑化」 */
 export const RELIC_REWARD_NEW_ELEMENTS = 10
 
-/** LLM 拆解提示词（黑化秘宝专用） */
-export const DECOMPOSE_SYSTEM_PROMPT = `你是一个炼金术概念拆解器。玩家使用「黑化」秘宝与一个元素融合，将该元素拆解为组成它的 1~3 个概念元素。
+/** 元素徽章 SVG 模板（合成与拆解共用） */
+const ELEMENT_BADGE_SVG = `    <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="elementGlow" cx="50%" cy="42%" r="60%">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#0369a1" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="elementPlate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#0c4a6e"/>
+          <stop offset="55%" stop-color="#075985"/>
+          <stop offset="100%" stop-color="#082f49"/>
+        </linearGradient>
+      </defs>
+      <circle cx="50" cy="50" r="46" fill="url(#elementGlow)"/>
+      <circle cx="50" cy="50" r="37" fill="url(#elementPlate)"/>
+      <circle cx="50" cy="50" r="37" fill="none" stroke="#bae6fd" stroke-opacity="0.28" stroke-width="1.5"/>
+      <ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.12" transform="rotate(-28 38 33)"/>
+      <!-- 在此处绘制居中主体图形 -->
+    </svg>`
+
+/** 元素徽章使用规则（合成与拆解共用） */
+const ELEMENT_BADGE_RULE =
+  '按模板保留徽章结构，颜色换成该元素主题色系，渐变 id 唯一；中央主体浅亮色、拟物化，画在约 35~65 区域，简洁有层次，无额外装饰'
+
+/** 类别图标（洛可可金饰）模板（合成与拆解共用） */
+const CATEGORY_ICON_SVG = `    <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="catBase" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#fdf4e0"/>
+          <stop offset="100%" stop-color="#eedcb8"/>
+        </linearGradient>
+      </defs>
+      <rect x="4" y="4" width="92" height="92" rx="26" fill="url(#catBase)" stroke="#b08d57" stroke-width="2"/>
+      <rect x="9" y="9" width="82" height="82" rx="20" fill="none" stroke="#b08d57" stroke-width="3"/>
+      <!-- 四角 + 四边花纹：按类别主题自由设计，配色自定 -->
+      <!-- 在此处绘制居中的主体图形（约 34~66 区域） -->
+    </svg>`
+
+/** 类别图标使用规则 */
+const CATEGORY_ICON_RULE =
+  '保持浅色底 + 双层框；四角四边花纹贴合类别主题，繁复精致、对称协调；中央主体大而粗（约 34~66 区域），缩小到 14px 仍清晰；配色按类别主题自定，渐变 id 唯一'
+
+/** LLM 拆解提示词（黑化/nigredo 秘宝专用） */
+export const DECOMPOSE_SYSTEM_PROMPT = `你是一个炼金术概念拆解器。玩家使用「黑化」秘宝与一个元素融合，把该元素拆解为组成它的 1~3 个概念元素。
 要求：
-1. 产出 1~3 个概念元素：它们是构成该元素的核心概念（如构成要素、组成部分、直接支撑它的本质概念），必须逻辑严谨、同源同层，不得越级生成更宏大或更高层的事物。
-2. 每个概念都要能独立存在，调用 craft_elements 创建：id 仅小写英文字母、数字、下划线；name 用中文；description 一两句，只描述元素本身；SVG 用「元素徽章」固定模板，颜色换成该概念的主题色系，渐变 id 唯一。
-3. 类别规则与 craft_elements 一致：优先复用已有类别，确属全新宏大主题才调用 create_category。
-4. 不要调用 craft_recipe。
-5. 必须至少产出 1 个概念元素。`
+1. 产出 1~3 个概念元素，尽量多拆：它们是构成该元素的核心概念（构成要素、组成部分、直接支撑它的本质概念），必须同源同层、彼此并列，严禁越级生成更宏大或更高层的事物。
+2. 概念元素可以是图鉴中已有的元素（直接引用其现有 ID，绝不重复创建），也可以是全新元素（调用 craft_elements 创建：id 仅小写英文字母、数字、下划线；name 用中文；description 一两句，只描述元素本身；类别优先复用已有，确属全新宏大主题才 create_category）。全新元素的 SVG 必须以「元素徽章」固定模板绘制：
+${ELEMENT_BADGE_SVG}
+${ELEMENT_BADGE_RULE}
+3. 若创建全新类别，其 icon 必须以「洛可可金饰」固定模板绘制：
+${CATEGORY_ICON_SVG}
+${CATEGORY_ICON_RULE}
+4. 必须调用 craft_recipe 绑定本次输入（秘宝 + 被拆解元素）与全部输出。
+5. 至少 1 个概念元素，最多 3 个。`
 
 /** 每种秘宝专属的反应提示词（key=秘宝 id；触发反应时使用对应秘宝的提示词） */
 export const RELIC_PROMPTS: Record<string, string> = {
-  blackening: DECOMPOSE_SYSTEM_PROMPT,
+  nigredo: DECOMPOSE_SYSTEM_PROMPT,
 }
 
 /** LLM 系统提示词（固定不变部分）。
@@ -69,39 +115,11 @@ export const SYSTEM_PROMPT_TEMPLATE = `你是一个炼金术合成规则生成�
    - category_id 必填：优先复用已有大类，确属全新宏大主题才调用 create_category，不要为单个元素建过小类别
    - description 一两句，只描述元素本身，严禁提及合成来源
    - 设计一个美观的 SVG（画布 100x100，纯矢量），必须以固定模板绘制「元素徽章」：
-     <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
-       <defs>
-         <radialGradient id="elementGlow" cx="50%" cy="42%" r="60%">
-           <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.55"/>
-           <stop offset="100%" stop-color="#0369a1" stop-opacity="0"/>
-         </radialGradient>
-         <linearGradient id="elementPlate" x1="0" y1="0" x2="0" y2="1">
-           <stop offset="0%" stop-color="#0c4a6e"/>
-           <stop offset="55%" stop-color="#075985"/>
-           <stop offset="100%" stop-color="#082f49"/>
-         </linearGradient>
-       </defs>
-       <circle cx="50" cy="50" r="46" fill="url(#elementGlow)"/>
-       <circle cx="50" cy="50" r="37" fill="url(#elementPlate)"/>
-       <circle cx="50" cy="50" r="37" fill="none" stroke="#bae6fd" stroke-opacity="0.28" stroke-width="1.5"/>
-       <ellipse cx="38" cy="33" rx="15" ry="7" fill="#ffffff" opacity="0.12" transform="rotate(-28 38 33)"/>
-       <!-- 在此处绘制居中主体图形 -->
-     </svg>
-     按模板保留徽章结构，颜色换成该元素主题色系，渐变 id 唯一；中央主体浅亮色、拟物化，画在约 35~65 区域，简洁有层次，无额外装饰
+${ELEMENT_BADGE_SVG}
+${ELEMENT_BADGE_RULE}
    - 类别（category）icon 使用与元素完全不同的「洛可可金饰」画风：浅色羊皮纸底 + 复杂花纹框架，二者在风格上形成鲜明区分。配色不强制，由你根据类别主题自行决定：
-     <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
-       <defs>
-         <linearGradient id="catBase" x1="0" y1="0" x2="0" y2="1">
-           <stop offset="0%" stop-color="#fdf4e0"/>
-           <stop offset="100%" stop-color="#eedcb8"/>
-         </linearGradient>
-       </defs>
-       <rect x="4" y="4" width="92" height="92" rx="26" fill="url(#catBase)" stroke="#b08d57" stroke-width="2"/>
-       <rect x="9" y="9" width="82" height="82" rx="20" fill="none" stroke="#b08d57" stroke-width="3"/>
-       <!-- 四角 + 四边花纹：按类别主题自由设计，配色自定 -->
-       <!-- 在此处绘制居中的主体图形（约 34~66 区域） -->
-     </svg>
-     保持浅色底 + 双层框；四角四边花纹贴合类别主题，繁复精致、对称协调；中央主体大而粗（约 34~66 区域），缩小到 14px 仍清晰；配色按类别主题自定，渐变 id 唯一
+${CATEGORY_ICON_SVG}
+${CATEGORY_ICON_RULE}
    - 新类别名称 4 个汉字，古朴雅致
 6. 必须调用 craft_recipe 绑定本次输入与输出。
 注意：产物不得与任一输入完全相同。`

@@ -47,8 +47,8 @@ function RecipeMini({ recipe, elements }: { recipe: Recipe; elements: Element[] 
   )
 }
 
-/** 元素完整详情 modal（书页风格） */
-function ElementDetailModal({
+/** 元素完整详情 modal（书页风格）——也用于秘宝详情 */
+export function ElementDetailModal({
   element,
   category,
   recipes,

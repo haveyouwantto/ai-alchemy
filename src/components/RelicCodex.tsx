@@ -1,12 +1,17 @@
-import { useMemo } from 'react'
-import type { Element } from '../types'
+import { useMemo, useState } from 'react'
+import type { Element, Recipe } from '../types'
 import { sanitizeSVG } from '../utils'
+import { ElementDetailModal } from './ElementCodex'
 
 interface RelicCodexProps {
   /** 秘宝模板（Element 形式，带 relicId） */
   relics: Element[]
   /** 库存：relicId → 数量 */
   counts: Record<string, number>
+  /** 配方表（秘宝详情展示参与的配方） */
+  recipes: Recipe[]
+  /** 已解锁元素（用于配方中的元素图标解析） */
+  elements: Element[]
   open: boolean
   onClose: () => void
   /** 部署秘宝到桌面（库存 -1） */
@@ -26,7 +31,10 @@ function RelicIcon({ svg, size = 52 }: { svg: string; size?: number }) {
 }
 
 /** 秘宝录：查看秘宝库存并部署到桌面 */
-export function RelicCodex({ relics, counts, open, onClose, onDeploy }: RelicCodexProps) {
+export function RelicCodex({ relics, counts, recipes, elements, open, onClose, onDeploy }: RelicCodexProps) {
+  const [detailRelic, setDetailRelic] = useState<Element | null>(null)
+  // 配方图标解析：已解锁元素 + 秘宝模板
+  const allElements = useMemo(() => [...elements, ...relics], [elements, relics])
   if (!open) return null
 
   const total = relics.reduce((sum, r) => sum + (counts[r.relicId ?? ''] ?? 0), 0)
@@ -73,7 +81,13 @@ export function RelicCodex({ relics, counts, open, onClose, onDeploy }: RelicCod
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-serif text-base font-bold text-amber-950">{r.name}</h3>
+                    <button
+                      onClick={() => setDetailRelic(r)}
+                      className="font-serif text-base font-bold text-amber-950 hover:text-amber-700"
+                      title="查看详情"
+                    >
+                      {r.name}
+                    </button>
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-bold ${
                             count > 0
@@ -109,6 +123,21 @@ export function RelicCodex({ relics, counts, open, onClose, onDeploy }: RelicCod
           秘宝为消耗品：放置到桌面后库存 -1；拖入垃圾桶或清空桌面会返还；与元素卡片结合触发秘宝反应。
         </div>
       </div>
+
+      {/* 秘宝详情：复用元素图鉴详情 modal（描述 + 参与的配方） */}
+      {detailRelic && (
+        <ElementDetailModal
+          element={detailRelic}
+          category={undefined}
+          recipes={recipes}
+          elements={allElements}
+          onAdd={(el) => {
+            onDeploy(el.relicId ?? '')
+            setDetailRelic(null)
+          }}
+          onClose={() => setDetailRelic(null)}
+        />
+      )}
     </div>
   )
 }
