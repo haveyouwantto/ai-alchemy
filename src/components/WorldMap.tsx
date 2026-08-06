@@ -92,12 +92,20 @@ function bfsSpanningTree(
   return tree
 }
 
-/** 径向树布局：按子树叶子数分配角度扇区，保证任意两条边不相交、向四面八方展开 */
+/** 每层半径增量：直连子节点越多，子节点环越靠外，给扇形展开留足空间；
+ *  子节点少（链式）逐级紧凑，避免大子树被径向甩远 */
+function ringGap(childCount: number): number {
+  const RING_BASE = 76
+  const RING_PER_CHILD = 16
+  return RING_BASE + RING_PER_CHILD * Math.max(0, childCount - 1)
+}
+
+/** 径向树布局：按子树大小分配角度扇区，保证任意两条边不相交、向四面八方展开；
+ *  每层环半径按父节点的直连子节点数取值，宽扇区自动外扩、深链保持紧凑 */
 function radialTreeLayout(
   nodeIds: string[],
   links: Array<{ source: string; target: string }>,
 ): Map<string, { x: number; y: number }> {
-  const RING_GAP = 110
   const adj = new Map<string, string[]>()
   for (const id of nodeIds) adj.set(id, [])
   for (const l of links) {
@@ -129,27 +137,29 @@ function radialTreeLayout(
   for (const r of roots) dfsSize(r, '')
 
   const pos = new Map<string, { x: number; y: number }>()
-  const place = (id: string, parent: string, depth: number, sectorStart: number, sectorSize: number) => {
-    if (depth === 0) {
+  const place = (id: string, parent: string | null, radius: number, sectorStart: number, sectorSize: number) => {
+    if (parent === null) {
       pos.set(id, { x: 0, y: 0 })
     } else {
       const angle = sectorStart + sectorSize / 2
-      const radius = depth * RING_GAP
       pos.set(id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius })
     }
     const children = (adj.get(id) ?? []).filter((c) => c !== parent)
     if (children.length === 0) return
+    // 同一父节点的子节点共处一环，环半径由父节点的直连子节点数决定
+    const nextRadius = radius + ringGap(children.length)
     let cursor = sectorStart - sectorSize / 2
     for (const c of children) {
       const size = ((subtreeSize.get(c) ?? 1) / (subtreeSize.get(id) ?? 1)) * sectorSize
-      place(c, id, depth + 1, cursor + size / 2, size)
+      place(c, id, nextRadius, cursor + size / 2, size)
       cursor += size
     }
   }
   let cursor = 0
   for (const r of roots) {
     const size = ((subtreeSize.get(r) ?? 1) / nodeIds.length) * 2 * Math.PI
-    place(r, '', 0, cursor + size / 2, size)
+    const rootChildren = (adj.get(r) ?? []).length
+    place(r, null, ringGap(rootChildren), cursor + size / 2, size)
     cursor += size
   }
   return pos
@@ -329,6 +339,16 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
   const links = graphData.treeLinks
   const nodes = graphData.mstNodes
 
+  // 树中每个节点作为父节点的直连子节点数：布局与连线静息长度共用同一套取值
+  const childCountMap = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const l of links) {
+      const s = String(l.source)
+      m.set(s, (m.get(s) ?? 0) + 1)
+    }
+    return m
+  }, [links])
+
   // 元素徽章 SVG → canvas 图片缓存（加载状态存 ref）
   useEffect(() => {
     const loadImage = (id: string, svg: string) => {
@@ -357,7 +377,13 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     const g = fgRef.current
     if (!g) return
     g.d3Force('charge')?.strength(-120)
-    g.d3Force('link')?.distance(115)
+    // 连线静息长度与径向布局同规则：按源节点的直连子节点数取值，避免力模拟再把大子树撑远
+    g.d3Force('link')?.distance((link: { source?: unknown }) => {
+      const src = link.source
+      const sid =
+        src && typeof src === 'object' ? String((src as { id?: unknown }).id ?? '') : String(src ?? '')
+      return ringGap(childCountMap.get(sid) ?? 0)
+    })
     g.d3Force('center')?.strength(0.05)
     g.d3Force('angleSpread', createAngleSpreadForce(links))
     g.d3Force('edgeCross', createEdgeCrossForce(links))
