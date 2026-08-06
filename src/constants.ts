@@ -126,7 +126,8 @@ const CATEGORY_ICON_RULE =
 
 /** 创建新元素的公共规则（合成与所有秘宝共用，避免命名/类别/SVG 规则分散） */
 export const CREATE_ELEMENTS_RULES = `- id 仅小写英文字母、数字、下划线；name 用中文
-- category_id 必填：优先复用已有类别，确属全新主题（如天文，化学，生物，地质，文明，人类)才调用 create_category，不要为单个元素建过小类别
+- category_id 必填：优先复用已有类别，确属全新主题（如天文，化学，生物，地质，文明，职业)才调用 create_category，不要为单个元素建过小类别
+- 不要把一个主题差别较大的元素硬塞入已有类别中，在考察阶段必须综合考虑类别id，名称和描述，判断放在此处是否离题
 - description 一两句，只描述元素本身，严禁提及合成来源
 - 全新元素的 SVG 必须以「元素徽章」固定模板绘制：
 ${ELEMENT_BADGE_SVG}
