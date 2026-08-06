@@ -169,9 +169,9 @@ export function ElementDetailModal({
             <div className="min-w-0">
               <h2 className="font-serif text-2xl font-bold text-amber-950">{viewElement.name}</h2>
               <p className="font-mono text-xs text-amber-700">{viewElement.id}</p>
-              {viewElement.discoveredAt !== undefined && viewElement.discoveredAt > 0 && (
+              {viewElement.discoveredAt !== undefined && (
                 <p className="mt-0.5 text-[11px] text-amber-700/80">
-                  发现于 {formatDiscovered(viewElement.discoveredAt)}
+                  {viewElement.discoveredAt > 10 ? `发现于 ${formatDiscovered(viewElement.discoveredAt)}` : '创世元素'}
                 </p>
               )}
               {viewCategory && (
