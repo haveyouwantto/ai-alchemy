@@ -377,6 +377,7 @@ export function WorldMap({ elements, recipes, categories, onAdd, open, onClose }
     const g = fgRef.current
     if (!g) return
     g.d3Force('charge')?.strength(-120)
+    g.d3Force('charge')?.distanceMax(2000)
     // 连线静息长度与径向布局同规则：按源节点的直连子节点数取值，避免力模拟再把大子树撑远
     g.d3Force('link')?.distance((link: { source?: unknown }) => {
       const src = link.source
